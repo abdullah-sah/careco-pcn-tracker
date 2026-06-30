@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@400;500;600;700&family=Spectral:ital,wght@0,500;0,600;1,500&display=swap');
+
+html,
+body {
+  margin: 0;
+  background: #f4f0e6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cfc6b3;
+  border-radius: 6px;
+  border: 2px solid #e6e0d3;
+}
+
+@keyframes rdspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rdnew {
+  0% {
+    background: #fff6df;
+  }
+  100% {
+    background: transparent;
+  }
+}
