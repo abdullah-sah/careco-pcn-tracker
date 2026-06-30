@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Recovery Desk — Careco PCN Register",
-  description:
-    "PCN register for Careco — stored letters, replacing the spreadsheet. UK GDPR, name-only.",
+  title: "PCN Register — Careco",
+  description: "PCN register for Careco — stored PCNs, replacing the spreadsheet.",
 };
 
 export default function RootLayout({
