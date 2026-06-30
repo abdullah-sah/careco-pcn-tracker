@@ -16,7 +16,14 @@ async function valid(value: string | undefined): Promise<boolean> {
   );
   const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(PAYLOAD));
   const expected = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return sig === expected;
+  return timingSafeEqualHex(sig, expected);
+}
+
+function timingSafeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 export async function middleware(req: NextRequest) {
