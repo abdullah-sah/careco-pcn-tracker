@@ -313,7 +313,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
 
               <div>
                 <div style={css("font:500 9px 'Spline Sans Mono';letter-spacing:.8px;color:#a89e8c;margin-bottom:9px")}>PCN ON FILE</div>
-                {d.imageUrl ? (
+                {d.hasImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={`/api/pcn-image/${d.id}`} alt="PCN on file" style={css("width:100%;border-radius:11px;border:1px solid #e2dbcd;display:block")} />
                 ) : (
