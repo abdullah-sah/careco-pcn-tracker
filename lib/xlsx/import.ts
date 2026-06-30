@@ -54,7 +54,11 @@ function parseSheet(
 
 export function parseWorkbook(buf: Uint8Array): PcnRow[] {
   const wb = XLSX.read(buf, { type: "buffer" });
-  const priv = parseSheet(wb.Sheets["Private"], PRIVATE_COLS, "private", 1);
-  const council = parseSheet(wb.Sheets["Council"], COUNCIL_COLS, "council", priv.length + 1);
+  const privSheet = wb.Sheets["Private"];
+  const councilSheet = wb.Sheets["Council"];
+  if (!privSheet) throw new Error('Workbook missing "Private" sheet');
+  if (!councilSheet) throw new Error('Workbook missing "Council" sheet');
+  const priv = parseSheet(privSheet, PRIVATE_COLS, "private", 1);
+  const council = parseSheet(councilSheet, COUNCIL_COLS, "council", priv.length + 1);
   return [...priv, ...council];
 }
