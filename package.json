@@ -13,13 +13,16 @@
     "db:import": "tsx db/import-pcns.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.107.0",
     "@neondatabase/serverless": "^1.1.0",
+    "@vercel/blob": "^2.5.0",
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.3",
     "next": "^15.5.19",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22",
