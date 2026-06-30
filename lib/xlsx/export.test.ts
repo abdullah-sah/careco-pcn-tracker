@@ -48,6 +48,40 @@ describe("buildXlsx fidelity (same data in)", () => {
   });
 });
 
+describe("buildXlsx CF + x14 dataValidation byte-identity", () => {
+  const sheet1 = "xl/worksheets/sheet1.xml";
+  const sheet2 = "xl/worksheets/sheet2.xml";
+
+  it("conditionalFormatting blocks are byte-identical for both sheets", () => {
+    const cfRe = /<conditionalFormatting[\s\S]*?<\/conditionalFormatting>/g;
+    for (const sheet of [sheet1, sheet2]) {
+      const aBlocks = (dec(A[sheet]).match(cfRe) ?? []).join("");
+      const bBlocks = (dec(B[sheet]).match(cfRe) ?? []).join("");
+      if (sheet === sheet2) {
+        expect(aBlocks).not.toBe(""); // guard: sheet2 definitely has CF
+      }
+      expect(bBlocks).toBe(aBlocks);
+    }
+  });
+
+  it("x14 extLst block in sheet2 is byte-identical", () => {
+    const extLstRe = /<extLst>[\s\S]*<\/extLst>/;
+    const aMatch = dec(A[sheet2]).match(extLstRe);
+    const bMatch = dec(B[sheet2]).match(extLstRe);
+    expect(aMatch).toBeTruthy(); // guard: template must have extLst
+    expect(bMatch?.[0]).toBe(aMatch?.[0]);
+  });
+
+  it("top-level dataValidations block in sheet2 is byte-identical", () => {
+    const dvRe = /<dataValidations[\s\S]*?<\/dataValidations>/;
+    const aMatch = dec(A[sheet2]).match(dvRe);
+    const bMatch = dec(B[sheet2]).match(dvRe);
+    if (aMatch) {
+      expect(bMatch?.[0]).toBe(aMatch[0]);
+    }
+  });
+});
+
 describe("buildXlsx range bumping (added rows)", () => {
   it("extends Council dimension + filter to the new last row", () => {
     const councilRows = rows.filter((r) => r.category === "council");
