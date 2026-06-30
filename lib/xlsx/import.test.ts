@@ -22,4 +22,16 @@ describe("parseWorkbook", () => {
     expect(c!.discountedCostPence).toBe(8000);
     expect(c!.dateOfPcn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
+  it("yields null (never NaN) for numeric fields", () => {
+    for (const r of rows) {
+      for (const k of ["costPence", "fullCostPence", "discountedCostPence", "discountPeriodDays"] as const) {
+        expect(Number.isNaN(r[k] as number)).toBe(false);
+      }
+    }
+  });
+  it("all non-null dates are valid ISO (no NaN-NaN-NaN)", () => {
+    for (const r of rows) {
+      if (r.dateOfPcn !== null) expect(r.dateOfPcn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
 });

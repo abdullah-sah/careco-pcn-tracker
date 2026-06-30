@@ -6,9 +6,9 @@ import { poundsToPence, serialToDate } from "../convert";
 function cellValue(raw: unknown, kind: ColSpec["kind"]): unknown {
   if (raw === undefined || raw === null || raw === "") return null;
   switch (kind) {
-    case "currency": return poundsToPence(Number(raw));
-    case "date": return serialToDate(Number(raw));
-    case "number": return Number(raw);
+    case "currency": { const n = Number(raw); return Number.isNaN(n) ? null : poundsToPence(n); }
+    case "date": { const n = Number(raw); return Number.isNaN(n) ? null : serialToDate(n); }
+    case "number": { const n = Number(raw); return Number.isNaN(n) ? null : n; }
     default: return String(raw); // string | paidish
   }
 }

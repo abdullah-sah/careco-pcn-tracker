@@ -15,8 +15,6 @@ async function main() {
   }
 
   const rows = parseWorkbook(Buffer.from(TEMPLATE_B64, "base64"));
-  const nanToNull = (v: number | null | undefined): number | null =>
-    v == null || !Number.isFinite(v) ? null : v;
 
   const records: PcnInsert[] = rows.map((r) => ({
     sortSeq: r.sortSeq,
@@ -24,11 +22,11 @@ async function main() {
     pcnNumber: r.pcnNumber,
     authority: r.authority,
     vehicleReg: r.vehicleReg,
-    costPence: nanToNull(r.costPence),
-    fullCostPence: nanToNull(r.fullCostPence),
-    discountedCostPence: nanToNull(r.discountedCostPence),
+    costPence: r.costPence,
+    fullCostPence: r.fullCostPence,
+    discountedCostPence: r.discountedCostPence,
     dateOfPcn: r.dateOfPcn,
-    discountPeriodDays: nanToNull(r.discountPeriodDays),
+    discountPeriodDays: r.discountPeriodDays,
     driverName: r.driverName,
     aliPaid: r.aliPaid,
     moneyRequested: r.moneyRequested,
