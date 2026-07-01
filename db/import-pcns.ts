@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-config({ path: ".env.development.local" });
+config({ path: ".env.local" });
 import { parseWorkbook } from "../lib/xlsx/import";
 import { TEMPLATE_B64 } from "../lib/xlsx/template-data";
 import type { PcnInsert } from "./schema";
