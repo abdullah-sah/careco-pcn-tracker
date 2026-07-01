@@ -12,12 +12,24 @@ export async function POST(req: Request) {
   const bytes = Buffer.from(await file.arrayBuffer());
   const mediaType = file.type || "image/jpeg";
 
-  const blob = await put(`pcn/${crypto.randomUUID()}-${file.name}`, bytes, {
-    access: "private",
-    contentType: mediaType,
-    addRandomSuffix: true,
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
+  let blob;
+  try {
+    blob = await put(`pcn/${crypto.randomUUID()}-${file.name}`, bytes, {
+      access: "private",
+      contentType: mediaType,
+      addRandomSuffix: true,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+  } catch {
+    return Response.json({
+      imageUrl: null,
+      extracted: {
+        category: null, pcnNumber: null, authority: null, vehicleReg: null, dateOfPcn: null,
+        discountPeriodDays: null, fullCost: null, discountedCost: null, cost: null,
+      },
+      error: "upload_failed",
+    }, { status: 200 });
+  }
 
   let extracted;
   try {

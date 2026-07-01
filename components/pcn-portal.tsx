@@ -67,6 +67,7 @@ interface State {
   showDiscounted: boolean; selectedId: string | null; newId: string | null; pcns: PcnView[];
   capStage: "idle" | "extracting" | "draft"; capFileName: string | null; capPreview: string | null; capImageUrl: string | null;
   capCat: Category; draft: Draft | null; edit: Record<string, string>; saving: boolean;
+  error: string | null;
 }
 
 export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
@@ -75,7 +76,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     view: "register", q: "", cat: "all", sort: "logged", sortDir: -1, showDiscounted: false,
     selectedId: null, newId: null, pcns: initialPcns,
     capStage: "idle", capFileName: null, capPreview: null, capImageUrl: null, capCat: "council",
-    draft: null, edit: {}, saving: false,
+    draft: null, edit: {}, saving: false, error: null,
   }));
   const update = useCallback((patch: Partial<State> | ((s: State) => Partial<State>)) =>
     setState((s) => ({ ...s, ...(typeof patch === "function" ? patch(s) : patch) })), []);
@@ -112,7 +113,11 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     fd.append("file", f);
     fetch("/api/ocr", { method: "POST", body: fd })
       .then((r) => r.json())
-      .then((data: { imageUrl: string; extracted: any }) => {
+      .then((data: { imageUrl: string | null; extracted: any; error?: string }) => {
+        if (data.error) {
+          update({ capStage: "draft", capImageUrl: null, capCat: "council", draft: emptyDraft(), error: "Image upload failed — fill in the fields manually." });
+          return;
+        }
         const ex = data.extracted || {};
         update({
           capStage: "draft", capImageUrl: data.imageUrl,
@@ -133,7 +138,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const capReset = () => update({ capStage: "idle", draft: null, capFileName: null, capPreview: null, capImageUrl: null });
   const capSave = async () => {
     const d = state.draft; if (!d || state.saving) return;
-    update({ saving: true });
+    update({ saving: true, error: null });
     const council = state.capCat === "council";
     const pence = (s: string) => { const n = parseFloat(s.replace(/[^0-9.]/g, "")); return isNaN(n) ? null : poundsToPence(n); };
     try {
@@ -145,9 +150,9 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
         dateOfPcn: d.dateOfPcn || null, discountPeriodDays: d.discountPeriodDays ? parseInt(d.discountPeriodDays, 10) : null,
         driverName: (d.driverName || "").trim() || null, status: null, notes: null, imageUrl: state.capImageUrl,
       });
-      update((s) => ({ pcns: [view, ...s.pcns], view: "register", newId: view.id, saving: false, capStage: "idle", draft: null, capPreview: null, capImageUrl: null }));
+      update((s) => ({ pcns: [view, ...s.pcns], view: "register", newId: view.id, saving: false, capStage: "idle", draft: null, capPreview: null, capImageUrl: null, error: null }));
       router.refresh();
-    } catch { update({ saving: false }); }
+    } catch { update({ saving: false, error: "Couldn't save — try again." }); }
   };
 
   /* detail edit */
@@ -155,7 +160,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     update((s) => ({ edit: { ...s.edit, [k]: e.target.value } }));
   const saveEdit = async () => {
     const id = state.selectedId; if (!id || state.saving) return;
-    update({ saving: true });
+    update({ saving: true, error: null });
     const e = state.edit;
     const patch: any = { status: e.status || null, driverName: e.driverName || null, notes: e.notes || null };
     const p = byId(id);
@@ -164,7 +169,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
       const view = await updatePcn(id, patch);
       update((s) => ({ pcns: s.pcns.map((x) => (x.id === id ? view : x)), saving: false }));
       router.refresh();
-    } catch { update({ saving: false }); }
+    } catch { update({ saving: false, error: "Couldn't save — try again." }); }
   };
 
   /* view-models */
@@ -309,6 +314,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                 <div style={css("display:flex;align-items:center;gap:12px;margin-top:16px")}>
                   <div style={css(`font:700 12px 'Spline Sans Mono';letter-spacing:.6px;padding:11px 16px;border-radius:8px;cursor:pointer;background:var(--accent,#9c3327);color:#fffdf8;box-shadow:0 3px 0 rgba(120,40,30,.35)${state.saving ? ";opacity:.6" : ""}`)} onClick={saveEdit}>{state.saving ? "SAVING…" : "SAVE CHANGES"}</div>
                 </div>
+                {state.error && <div style={css("color:#9c3327;font:500 11px 'Hanken Grotesk';margin-top:8px")}>{state.error}</div>}
               </div>
 
               <div>
@@ -405,6 +411,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                     <div style={css(`font:700 12px 'Spline Sans Mono';letter-spacing:.6px;padding:12px 18px;border-radius:8px;cursor:pointer;background:var(--accent,#9c3327);color:#fffdf8;transform:rotate(-1deg);box-shadow:0 3px 0 rgba(120,40,30,.35)${state.saving ? ";opacity:.6" : ""}`)} onClick={capSave}>{state.saving ? "SAVING…" : "SAVE TO REGISTER"}</div>
                     <div style={css("font:600 12px 'Hanken Grotesk';color:#8a8175;cursor:pointer")} onClick={capReset}>Discard</div>
                   </div>
+                  {state.error && <div style={css("color:#9c3327;font:500 11px 'Hanken Grotesk';margin-top:8px")}>{state.error}</div>}
                 </div>
               ) : (
                 <div style={css("display:flex;flex-direction:column;justify-content:center;height:280px;color:#a89e8c;font:400 12.5px;line-height:1.6;max-width:340px")}>
