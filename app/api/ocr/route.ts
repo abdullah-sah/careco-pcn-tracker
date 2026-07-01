@@ -13,9 +13,10 @@ export async function POST(req: Request) {
   const mediaType = file.type || "image/jpeg";
 
   const blob = await put(`pcn/${crypto.randomUUID()}-${file.name}`, bytes, {
-    access: "public",
+    access: "private",
     contentType: mediaType,
     addRandomSuffix: true,
+    token: process.env.BLOB_READ_WRITE_TOKEN,
   });
 
   let extracted;
