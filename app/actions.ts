@@ -1,11 +1,10 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { pcn } from "@/db/schema";
 import { toView, type PcnView } from "@/lib/pcn/view";
-import { nextSortSeq } from "@/db/queries";
 import type { Category } from "@/lib/pcn/types";
 
 export interface CreatePcnInput {
@@ -29,8 +28,11 @@ export type UpdatePcnInput = Partial<
 >;
 
 export async function createPcn(input: CreatePcnInput): Promise<PcnView> {
-  const sortSeq = await nextSortSeq();
-  const [row] = await db.insert(pcn).values({ ...input, sortSeq }).returning();
+  const [row] = await db
+    .insert(pcn)
+    .values({ ...input, sortSeq: sql`(select coalesce(max(${pcn.sortSeq}), 0) + 1 from ${pcn})` })
+    .returning();
+  if (!row) throw new Error("PCN not found");
   revalidatePath("/");
   return toView(row);
 }
@@ -41,6 +43,7 @@ export async function updatePcn(id: string, patch: UpdatePcnInput): Promise<PcnV
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(pcn.id, id))
     .returning();
+  if (!row) throw new Error("PCN not found");
   revalidatePath("/");
   return toView(row);
 }

@@ -1,4 +1,4 @@
-import { asc, desc, sql } from "drizzle-orm";
+import { asc, desc } from "drizzle-orm";
 import { db } from "./index";
 import { pcn } from "./schema";
 import type { PcnRow } from "../lib/pcn/types";
@@ -31,9 +31,3 @@ export async function getAllPcns(): Promise<PcnView[]> {
   return rows.map(toView);
 }
 
-export async function nextSortSeq(): Promise<number> {
-  const [{ max }] = await db
-    .select({ max: sql<number>`coalesce(max(${pcn.sortSeq}), 0)` })
-    .from(pcn);
-  return Number(max) + 1;
-}
