@@ -84,10 +84,10 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const byId = (id: string | null) => state.pcns.find((p) => p.id === id) || null;
 
   /* nav */
-  const goRegister = () => update({ view: "register" });
+  const goRegister = () => update({ view: "register", error: null });
   const openDetail = (id: string) => {
     const p = state.pcns.find((x) => x.id === id)!;
-    update({ view: "detail", selectedId: id, edit: {
+    update({ view: "detail", selectedId: id, error: null, edit: {
       status: p.status ?? "", driverName: p.driverName ?? "", notes: p.notes ?? "",
       aliPaid: p.aliPaid ?? "", moneyRequested: p.moneyRequested ?? "", driverPaid: p.driverPaid ?? "",
     } });
@@ -120,7 +120,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
         }
         const ex = data.extracted || {};
         update({
-          capStage: "draft", capImageUrl: data.imageUrl,
+          capStage: "draft", capImageUrl: data.imageUrl, error: null,
           capCat: ex.category === "private" ? "private" : "council",
           draft: {
             pcnNumber: ex.pcnNumber ?? "", authority: ex.authority ?? "", vehicleReg: ex.vehicleReg ?? "",
@@ -135,7 +135,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const capField = (k: keyof Draft) => (e: React.ChangeEvent<HTMLInputElement>) =>
     update((s) => ({ draft: { ...(s.draft ?? emptyDraft()), [k]: e.target.value } }));
   const setCapCat = (c: Category) => update({ capCat: c });
-  const capReset = () => update({ capStage: "idle", draft: null, capFileName: null, capPreview: null, capImageUrl: null });
+  const capReset = () => update({ capStage: "idle", draft: null, capFileName: null, capPreview: null, capImageUrl: null, error: null });
   const capSave = async () => {
     const d = state.draft; if (!d || state.saving) return;
     update({ saving: true, error: null });
@@ -167,7 +167,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     if (p?.category === "council") { patch.aliPaid = e.aliPaid || null; patch.moneyRequested = e.moneyRequested || null; patch.driverPaid = e.driverPaid || null; }
     try {
       const view = await updatePcn(id, patch);
-      update((s) => ({ pcns: s.pcns.map((x) => (x.id === id ? view : x)), saving: false }));
+      update((s) => ({ pcns: s.pcns.map((x) => (x.id === id ? view : x)), saving: false, error: null }));
       router.refresh();
     } catch { update({ saving: false, error: "Couldn't save — try again." }); }
   };
