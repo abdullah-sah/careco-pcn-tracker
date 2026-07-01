@@ -32,7 +32,7 @@ export async function extractPcn(base64: string, mediaType: string): Promise<Ext
       {
         role: "user",
         content: [
-          { type: "image", source: { type: "base64", media_type: mediaType as any, data: base64 } },
+          { type: "image", source: { type: "base64", media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: base64 } },
           { type: "text", text: PROMPT },
         ],
       },

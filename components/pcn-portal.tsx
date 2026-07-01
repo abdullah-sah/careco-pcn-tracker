@@ -4,7 +4,7 @@ import React, { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PcnView } from "@/lib/pcn/view";
 import { createPcn, updatePcn } from "@/app/actions";
-import { penceToPounds, poundsToPence } from "@/lib/convert";
+import { poundsToPence } from "@/lib/convert";
 
 /* ---------- helpers ---------- */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -59,7 +59,6 @@ const ACCENT = "#9c3327";
 type Category = "council" | "private";
 interface Draft { pcnNumber: string; authority: string; vehicleReg: string; dateOfPcn: string; discountPeriodDays: string; full: string; disc: string; cost: string; driverName: string }
 function emptyDraft(): Draft { return { pcnNumber: "", authority: "", vehicleReg: "", dateOfPcn: "", discountPeriodDays: "", full: "", disc: "", cost: "", driverName: "" }; }
-function penceStr(p: number | null): string { return p == null ? "" : String(penceToPounds(p)); }
 
 interface State {
   view: "register" | "detail" | "capture";

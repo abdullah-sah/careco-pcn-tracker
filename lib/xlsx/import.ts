@@ -26,7 +26,7 @@ function parseSheet(
   let seq = startSeq;
   for (let i = 1; i < grid.length; i++) { // row 0 = header
     const r = grid[i];
-    if (!r || r.every((c) => c === undefined || c === null || c === "")) continue;
+    if (!r || r.every((c) => c === undefined || c === null || c === "")) continue; // defensive; blankrows:false already filters blank rows
     const base: Record<string, unknown> = { sortSeq: seq++, category };
     cols.forEach((spec, idx) => { base[spec.field] = cellValue(r[idx], spec.kind); });
     // ensure all PcnRow fields exist
