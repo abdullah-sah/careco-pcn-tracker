@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PcnView } from "@/lib/pcn/view";
-import { createPcn, updatePcn } from "@/app/actions";
+import { createPcn, updatePcn, previewReset, resetFromXlsx } from "@/app/actions";
 import { poundsToPence } from "@/lib/convert";
 
 /* ---------- helpers ---------- */
@@ -67,6 +67,9 @@ interface State {
   capStage: "idle" | "extracting" | "draft"; capFileName: string | null; capPreview: string | null; capImageUrl: string | null;
   capCat: Category; draft: Draft | null; edit: Record<string, string>; saving: boolean;
   error: string | null;
+  importStage: "idle" | "parsing" | "confirm" | "resetting";
+  importPreview: { fileRows: number; privateCount: number; councilCount: number; currentRows: number } | null;
+  importError: string | null;
 }
 
 export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
@@ -76,6 +79,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     selectedId: null, newId: null, pcns: initialPcns,
     capStage: "idle", capFileName: null, capPreview: null, capImageUrl: null, capCat: "council",
     draft: null, edit: {}, saving: false, error: null,
+    importStage: "idle", importPreview: null, importError: null,
   }));
   const update = useCallback((patch: Partial<State> | ((s: State) => Partial<State>)) =>
     setState((s) => ({ ...s, ...(typeof patch === "function" ? patch(s) : patch) })), []);
@@ -171,6 +175,38 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     } catch { update({ saving: false, error: "Couldn't save — try again." }); }
   };
 
+  /* import / reset from xlsx */
+  const importFileRef = useRef<File | null>(null);
+  const toFd = (f: File) => { const fd = new FormData(); fd.append("file", f); return fd; };
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!f || state.importStage !== "idle") return;
+    importFileRef.current = f;
+    update({ importStage: "parsing", importError: null });
+    const res = await previewReset(toFd(f));
+    if (res.ok) update({ importStage: "confirm", importPreview: res });
+    else { importFileRef.current = null; update({ importStage: "idle", importError: res.error }); }
+  };
+  const cancelImport = () => {
+    if (state.importStage === "resetting") return;
+    importFileRef.current = null;
+    update({ importStage: "idle", importPreview: null, importError: null });
+  };
+  const confirmReset = async () => {
+    const f = importFileRef.current;
+    if (!f || state.importStage === "resetting") return;
+    update({ importStage: "resetting", importError: null });
+    const res = await resetFromXlsx(toFd(f));
+    if (res.ok) {
+      importFileRef.current = null;
+      update({ pcns: res.pcns, importStage: "idle", importPreview: null, importError: null, view: "register", selectedId: null, newId: null, error: null });
+      router.refresh();
+    } else {
+      update({ importStage: "confirm", importError: res.error }); // keep dialog open, show error, allow retry/cancel
+    }
+  };
+
   /* view-models */
   const catBg = (c: string) => (c === "council" ? "#e7eef0" : "#f3e3df");
   const catFg = (c: string) => (c === "council" ? "#3a5a66" : "#9c3327");
@@ -210,6 +246,10 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
             </div>
           </div>
           <div style={css("display:flex;align-items:center;gap:14px")}>
+            <label style={css(`font:700 11px 'Spline Sans Mono';letter-spacing:.5px;color:#6a6155;background:#fffdf8;border:1.5px solid #e2dbcd;padding:8px 13px;border-radius:9px;cursor:pointer${state.importStage === "parsing" ? ";opacity:.6" : ""}`)}>
+              {state.importStage === "parsing" ? "READING…" : "↥ IMPORT XLSX"}
+              <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onImportFile} disabled={state.importStage !== "idle"} style={{ display: "none" }} />
+            </label>
             <a href="/api/export" style={css("text-decoration:none;font:700 11px 'Spline Sans Mono';letter-spacing:.5px;color:#6a6155;background:#fffdf8;border:1.5px solid #e2dbcd;padding:8px 13px;border-radius:9px;cursor:pointer")}>↧ EXPORT XLSX</a>
             <div style={css("text-align:right;font:500 10px 'Spline Sans Mono';color:#8a8175;line-height:1.5")}>
               <div>UK GDPR · name-only</div>
@@ -219,6 +259,9 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
       </header>
 
       <main style={css("max-width:1020px;margin:0 auto")}>
+        {state.importError && state.importStage === "idle" && (
+          <div style={css("padding:12px 24px 0;color:#9c3327;font:500 11px 'Hanken Grotesk'")}>{state.importError}</div>
+        )}
         {/* REGISTER */}
         {state.view === "register" && (
           <div>
@@ -418,6 +461,22 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                   Snap or upload the PCN and the fields fill themselves in. You review and correct anything before saving — what you save is what gets stored. The register checks the PCN number so you don&apos;t log the same PCN twice.
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {(state.importStage === "confirm" || state.importStage === "resetting") && state.importPreview && (
+          <div style={css("position:fixed;inset:0;background:rgba(33,29,24,.45);display:flex;align-items:center;justify-content:center;z-index:50")}>
+            <div style={css("background:#fffdf8;border:1px solid #e2dbcd;border-radius:13px;padding:22px 24px;width:min(440px,90vw);box-shadow:0 12px 40px rgba(33,29,24,.25)")}>
+              <div style={css("font:600 16px 'Spectral',serif;margin-bottom:10px")}>Reset register from file?</div>
+              <div style={css("font:400 12.5px;color:#6a6155;line-height:1.6")}>
+                Replace the {state.importPreview.currentRows} PCN{state.importPreview.currentRows === 1 ? "" : "s"} in the register with {state.importPreview.fileRows} from the file ({state.importPreview.privateCount} private + {state.importPreview.councilCount} council)? Changes made in the app will be lost. Letter images are kept where the PCN number still matches.
+              </div>
+              {state.importError && <div style={css("color:#9c3327;font:500 11px 'Hanken Grotesk';margin-top:10px")}>{state.importError}</div>}
+              <div style={css("display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-top:18px")}>
+                <div style={css("font:600 12px 'Hanken Grotesk';color:#8a8175;cursor:pointer")} onClick={cancelImport}>Cancel</div>
+                <div style={css(`font:700 12px 'Spline Sans Mono';letter-spacing:.6px;padding:11px 16px;border-radius:8px;cursor:pointer;background:var(--accent,#9c3327);color:#fffdf8;box-shadow:0 3px 0 rgba(120,40,30,.35)${state.importStage === "resetting" ? ";opacity:.6" : ""}`)} onClick={confirmReset}>{state.importStage === "resetting" ? "RESETTING…" : "RESET REGISTER"}</div>
+              </div>
             </div>
           </div>
         )}
