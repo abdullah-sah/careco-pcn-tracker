@@ -184,9 +184,14 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     if (!f || state.importStage !== "idle") return;
     importFileRef.current = f;
     update({ importStage: "parsing", importError: null });
-    const res = await previewReset(toFd(f));
-    if (res.ok) update({ importStage: "confirm", importPreview: res });
-    else { importFileRef.current = null; update({ importStage: "idle", importError: res.error }); }
+    try {
+      const res = await previewReset(toFd(f));
+      if (res.ok) update({ importStage: "confirm", importPreview: res });
+      else { importFileRef.current = null; update({ importStage: "idle", importError: res.error }); }
+    } catch {
+      importFileRef.current = null;
+      update({ importStage: "idle", importError: "Couldn't read that file — try again." });
+    }
   };
   const cancelImport = () => {
     if (state.importStage === "resetting") return;
@@ -197,13 +202,17 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     const f = importFileRef.current;
     if (!f || state.importStage === "resetting") return;
     update({ importStage: "resetting", importError: null });
-    const res = await resetFromXlsx(toFd(f));
-    if (res.ok) {
-      importFileRef.current = null;
-      update({ pcns: res.pcns, importStage: "idle", importPreview: null, importError: null, view: "register", selectedId: null, newId: null, error: null });
-      router.refresh();
-    } else {
-      update({ importStage: "confirm", importError: res.error }); // keep dialog open, show error, allow retry/cancel
+    try {
+      const res = await resetFromXlsx(toFd(f));
+      if (res.ok) {
+        importFileRef.current = null;
+        update({ pcns: res.pcns, importStage: "idle", importPreview: null, importError: null, view: "register", selectedId: null, newId: null, error: null });
+        router.refresh();
+      } else {
+        update({ importStage: "confirm", importError: res.error }); // keep dialog open, show error, allow retry/cancel
+      }
+    } catch {
+      update({ importStage: "confirm", importError: "Couldn't reset — try again." });
     }
   };
 
