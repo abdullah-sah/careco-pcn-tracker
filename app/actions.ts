@@ -72,8 +72,13 @@ function parseError(e: unknown): string {
 }
 
 export async function previewReset(fd: FormData): Promise<ResetPreview> {
+  let rows: PcnRow[];
   try {
-    const rows = await rowsFromUpload(fd);
+    rows = await rowsFromUpload(fd);
+  } catch (e) {
+    return { ok: false, error: parseError(e) };
+  }
+  try {
     const privateCount = rows.filter((r) => r.category === "private").length;
     const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(pcn);
     return {
@@ -84,7 +89,8 @@ export async function previewReset(fd: FormData): Promise<ResetPreview> {
       currentRows: n,
     };
   } catch (e) {
-    return { ok: false, error: parseError(e) };
+    console.error("previewReset failed:", e);
+    return { ok: false, error: "Couldn't check the register — try again." };
   }
 }
 
