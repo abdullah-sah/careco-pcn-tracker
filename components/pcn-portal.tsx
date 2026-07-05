@@ -44,10 +44,6 @@ function css(str: string): React.CSSProperties {
 function merge(base: string, extra: React.CSSProperties): React.CSSProperties {
   return { ...css(base), ...extra };
 }
-function Hover({ tag = "div", base, hover, children, ...rest }: { tag?: React.ElementType; base: React.CSSProperties; hover: React.CSSProperties; children?: React.ReactNode } & Record<string, unknown>) {
-  const [on, setOn] = useState(false);
-  return React.createElement(tag, { style: on ? { ...base, ...hover } : base, onMouseEnter: () => setOn(true), onMouseLeave: () => setOn(false), ...rest }, children);
-}
 const LABEL = "font:500 9px 'Spline Sans Mono';letter-spacing:.8px;color:#a89e8c;margin-bottom:5px";
 const INPUT_MONO = "width:100%;box-sizing:border-box;background:#faf6ec;border:1px solid #e2dbcd;border-radius:7px;padding:9px 11px;font:600 12px 'Spline Sans Mono';color:#211d18;outline:none";
 const INPUT_HANKEN = "width:100%;box-sizing:border-box;background:#faf6ec;border:1px solid #e2dbcd;border-radius:7px;padding:9px 11px;font:600 12px 'Hanken Grotesk';color:#211d18;outline:none";
@@ -392,89 +388,89 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
 
         {/* CAPTURE */}
         {state.view === "capture" && (
-          <div style={css("padding:20px 24px 28px;min-height:460px")}>
-            <div style={css("display:flex;align-items:center;gap:14px;margin-bottom:6px")}>
-              <div style={css("font:600 12px 'Spline Sans Mono';color:#8a8175;cursor:pointer")} onClick={goRegister}>← register</div>
-              <div style={css("height:22px;width:1px;background:#e2dbcd")} />
-              <div style={css("font:600 19px 'Spectral',serif")}>Add a PCN</div>
+          <div className="px-4 pt-5 pb-7 md:px-6 min-h-[460px]">
+            <div className="flex items-center gap-3.5 mb-1.5">
+              <div className="font-spline font-semibold text-xs text-faint cursor-pointer" onClick={goRegister}>← register</div>
+              <div className="h-[22px] w-px bg-line" />
+              <div className="font-spectral font-semibold text-[19px]">Add a PCN</div>
             </div>
-            <div style={css("font:400 12px;color:#8a8175;margin-bottom:20px;max-width:560px")}>Take a photo of the PCN or upload one — the details are read off automatically. <b>Nothing is saved until you check the fields and press Save.</b> No driver name is read from the image.</div>
+            <div className="text-xs text-faint mb-5 max-w-[560px]">Take a photo of the PCN or upload one — the details are read off automatically. <b>Nothing is saved until you check the fields and press Save.</b> No driver name is read from the image.</div>
 
-            <div style={css("display:grid;grid-template-columns:340px 1fr;gap:24px;align-items:start")}>
+            <div className="grid grid-cols-1 md:grid-cols-[340px_1fr] gap-6 items-start">
               <div>
                 {state.capStage === "idle" && (
-                  <div style={css("display:flex;flex-direction:column;gap:12px")}>
-                    <Hover tag="label" base={css("display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;height:188px;background:var(--accent,#9c3327);border-radius:13px;cursor:pointer;text-align:center;padding:18px;color:#fffdf8")} hover={{ filter: "brightness(1.06)" }}>
-                      <div style={css("width:44px;height:44px;border:1.5px solid #f0d9cf;border-radius:9px;display:flex;align-items:center;justify-content:center;font:700 18px 'Spline Sans Mono';transform:rotate(-4deg)")}>▣</div>
-                      <div style={css("font:700 14px 'Hanken Grotesk'")}>Take a photo</div>
-                      <div style={css("font:400 10.5px;color:#f0d9cf")}>Use the camera to snap the PCN</div>
-                      <input type="file" accept="image/*" capture="environment" onChange={onFile} style={{ display: "none" }} />
-                    </Hover>
-                    <Hover tag="label" base={css("display:flex;align-items:center;justify-content:center;gap:10px;height:64px;background:#fffdf8;border:1.5px dashed #d8cfbd;border-radius:13px;cursor:pointer;text-align:center;font:600 13px 'Hanken Grotesk';color:#6a6155")} hover={{ borderColor: "var(--accent,#9c3327)" }}>
-                      <span style={css("font:700 15px 'Spline Sans Mono';color:var(--accent,#9c3327)")}>↑</span> Upload an image
-                      <input type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
-                    </Hover>
-                    <div style={css("text-align:center;font:500 11px 'Hanken Grotesk';color:#a89e8c;padding-top:4px;cursor:pointer")} onClick={capManual}>or enter the details manually</div>
+                  <div className="flex flex-col gap-3">
+                    <label className="flex flex-col items-center justify-center gap-[11px] h-[188px] bg-accent rounded-[13px] cursor-pointer text-center p-[18px] text-paper hover:brightness-[1.06]">
+                      <div className="w-11 h-11 border-[1.5px] border-[#f0d9cf] rounded-[9px] flex items-center justify-center font-spline font-bold text-lg -rotate-[4deg]">▣</div>
+                      <div className="font-hanken font-bold text-sm">Take a photo</div>
+                      <div className="text-[10.5px] text-[#f0d9cf]">Use the camera to snap the PCN</div>
+                      <input type="file" accept="image/*" capture="environment" onChange={onFile} className="hidden" />
+                    </label>
+                    <label className="flex items-center justify-center gap-2.5 h-16 bg-paper border-[1.5px] border-dashed border-[#d8cfbd] rounded-[13px] cursor-pointer text-center font-hanken font-semibold text-[13px] text-muted hover:border-accent">
+                      <span className="font-spline font-bold text-[15px] text-accent">↑</span> Upload an image
+                      <input type="file" accept="image/*" onChange={onFile} className="hidden" />
+                    </label>
+                    <div className="text-center font-hanken font-medium text-[11px] text-sand pt-1 cursor-pointer" onClick={capManual}>or enter the details manually</div>
                   </div>
                 )}
                 {state.capStage === "extracting" && (
-                  <div style={css("display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;height:280px;background:#1b1714;border-radius:13px;color:#efe9dd")}>
-                    <span style={css("width:30px;height:30px;border:3px solid #4a3f37;border-top-color:#c9a98a;border-radius:50%;animation:rdspin .8s linear infinite")} />
-                    <div style={css("font:600 13px 'Hanken Grotesk'")}>Reading the PCN…</div>
-                    <div style={css("font:500 10px 'Spline Sans Mono';color:#9a8d80")}>{state.capFileName}</div>
+                  <div className="flex flex-col items-center justify-center gap-[15px] h-[280px] bg-[#1b1714] rounded-[13px] text-[#efe9dd]">
+                    <span className="w-[30px] h-[30px] border-[3px] border-[#4a3f37] border-t-[#c9a98a] rounded-full animate-[rdspin_0.8s_linear_infinite]" />
+                    <div className="font-hanken font-semibold text-[13px]">Reading the PCN…</div>
+                    <div className="font-spline font-medium text-[10px] text-[#9a8d80]">{state.capFileName}</div>
                   </div>
                 )}
                 {state.capStage === "draft" && (
                   <div>
                     {state.capPreview ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={state.capPreview} alt="captured PCN" style={css("width:100%;border-radius:13px;border:1px solid #e2dbcd;display:block")} />
+                      <img src={state.capPreview} alt="captured PCN" className="w-full rounded-[13px] border border-line block max-h-[220px] object-contain md:max-h-none" />
                     ) : (
-                      <div style={css("height:220px;border-radius:13px;border:1px dashed #d8cfbd;background:repeating-linear-gradient(45deg,#f6f1e6,#f6f1e6 9px,#f1ebdd 9px,#f1ebdd 18px);display:flex;align-items:center;justify-content:center;font:500 10px 'Spline Sans Mono';color:#b3a892")}>manual entry — no image</div>
+                      <div className="h-[220px] rounded-[13px] border border-dashed border-[#d8cfbd] bg-[repeating-linear-gradient(45deg,#f6f1e6,#f6f1e6_9px,#f1ebdd_9px,#f1ebdd_18px)] flex items-center justify-center font-spline font-medium text-[10px] text-[#b3a892]">manual entry — no image</div>
                     )}
-                    <div style={css("font:400 10.5px;color:#a89e8c;margin-top:8px")}>{state.capFileName}</div>
+                    <div className="text-[10.5px] text-sand mt-2">{state.capFileName}</div>
                   </div>
                 )}
               </div>
 
               {state.capStage === "draft" && state.draft ? (
-                <div style={css("background:#fffdf8;border:1px solid #e2dbcd;border-radius:13px;padding:20px 22px")}>
-                  <div style={css("display:flex;align-items:center;justify-content:space-between;margin-bottom:16px")}>
-                    <div style={css("font:600 15px 'Spectral',serif")}>Check &amp; save</div>
-                    <span style={merge("font:500 9px 'Spline Sans Mono';letter-spacing:.6px;padding:4px 9px;border-radius:5px", dupe ? { background: "#f3e3df", color: "#9c3327" } : { background: "#eaf2ea", color: "#3f7d4e" })}>{dupe ? "ALREADY LOGGED" : "NEW PCN"}</span>
+                <div className="bg-paper border border-line rounded-[13px] p-4 md:px-[22px] md:py-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="font-spectral font-semibold text-[15px]">Check &amp; save</div>
+                    <span className={`font-spline font-medium text-[9px] tracking-[0.6px] px-[9px] py-1 rounded-[5px] ${dupe ? "bg-[#f3e3df] text-accent" : "bg-[#eaf2ea] text-[#3f7d4e]"}`}>{dupe ? "ALREADY LOGGED" : "NEW PCN"}</span>
                   </div>
-                  <div style={css("display:grid;grid-template-columns:1fr 1fr;gap:13px 16px")}>
-                    <div><div style={css(LABEL)}>PCN NUMBER</div><input value={state.draft.pcnNumber} onChange={capField("pcnNumber")} style={css(INPUT_MONO)} /></div>
-                    <div><div style={css(LABEL)}>VEHICLE REG</div><input value={state.draft.vehicleReg} onChange={capField("vehicleReg")} style={css(INPUT_MONO)} /></div>
-                    <div><div style={css(LABEL)}>ISSUING AUTHORITY</div><input value={state.draft.authority} onChange={capField("authority")} style={css(INPUT_HANKEN)} /></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-[13px]">
+                    <div><div className={LABEL_CLS}>PCN NUMBER</div><input value={state.draft.pcnNumber} onChange={capField("pcnNumber")} className={INPUT_MONO_CLS} /></div>
+                    <div><div className={LABEL_CLS}>VEHICLE REG</div><input value={state.draft.vehicleReg} onChange={capField("vehicleReg")} className={INPUT_MONO_CLS} /></div>
+                    <div><div className={LABEL_CLS}>ISSUING AUTHORITY</div><input value={state.draft.authority} onChange={capField("authority")} className={INPUT_HANKEN_CLS} /></div>
                     <div>
-                      <div style={css(LABEL)}>CATEGORY</div>
-                      <div style={css("display:flex;gap:6px")}>
-                        <div style={merge("flex:1;text-align:center;font:600 11px 'Hanken Grotesk';padding:8px;border-radius:7px;cursor:pointer;border:1px solid #e2dbcd", state.capCat === "council" ? { background: "#211d18", color: "#fffdf8" } : { background: "#fffdf8", color: "#6a6155" })} onClick={() => setCapCat("council")}>council</div>
-                        <div style={merge("flex:1;text-align:center;font:600 11px 'Hanken Grotesk';padding:8px;border-radius:7px;cursor:pointer;border:1px solid #e2dbcd", state.capCat === "private" ? { background: "#211d18", color: "#fffdf8" } : { background: "#fffdf8", color: "#6a6155" })} onClick={() => setCapCat("private")}>private</div>
+                      <div className={LABEL_CLS}>CATEGORY</div>
+                      <div className="flex gap-1.5">
+                        <div className={`flex-1 text-center font-hanken font-semibold text-[11px] p-2 rounded-[7px] cursor-pointer border border-line ${state.capCat === "council" ? "bg-ink text-paper" : "bg-paper text-muted"}`} onClick={() => setCapCat("council")}>council</div>
+                        <div className={`flex-1 text-center font-hanken font-semibold text-[11px] p-2 rounded-[7px] cursor-pointer border border-line ${state.capCat === "private" ? "bg-ink text-paper" : "bg-paper text-muted"}`} onClick={() => setCapCat("private")}>private</div>
                       </div>
                     </div>
-                    <div><div style={css(LABEL)}>DATE OF PCN</div><input value={state.draft.dateOfPcn} onChange={capField("dateOfPcn")} placeholder="2026-06-19" style={css(INPUT_MONO)} /></div>
-                    <div><div style={css(LABEL)}>DISCOUNT PERIOD (DAYS)</div><input value={state.draft.discountPeriodDays} onChange={capField("discountPeriodDays")} placeholder="14" style={css(INPUT_MONO)} /></div>
+                    <div><div className={LABEL_CLS}>DATE OF PCN</div><input value={state.draft.dateOfPcn} onChange={capField("dateOfPcn")} placeholder="2026-06-19" className={INPUT_MONO_CLS} /></div>
+                    <div><div className={LABEL_CLS}>DISCOUNT PERIOD (DAYS)</div><input value={state.draft.discountPeriodDays} onChange={capField("discountPeriodDays")} placeholder="14" className={INPUT_MONO_CLS} /></div>
                     {state.capCat === "council" ? (
                       <>
-                        <div><div style={css(LABEL)}>FULL COST (£)</div><input value={state.draft.full} onChange={capField("full")} placeholder="130" style={css(INPUT_MONO)} /></div>
-                        <div><div style={css(LABEL)}>DISCOUNTED COST (£)</div><input value={state.draft.disc} onChange={capField("disc")} placeholder="65" style={css(INPUT_MONO)} /></div>
+                        <div><div className={LABEL_CLS}>FULL COST (£)</div><input value={state.draft.full} onChange={capField("full")} placeholder="130" className={INPUT_MONO_CLS} /></div>
+                        <div><div className={LABEL_CLS}>DISCOUNTED COST (£)</div><input value={state.draft.disc} onChange={capField("disc")} placeholder="65" className={INPUT_MONO_CLS} /></div>
                       </>
                     ) : (
-                      <div><div style={css(LABEL)}>COST OF PCN (£)</div><input value={state.draft.cost} onChange={capField("cost")} placeholder="100" style={css(INPUT_MONO)} /></div>
+                      <div><div className={LABEL_CLS}>COST OF PCN (£)</div><input value={state.draft.cost} onChange={capField("cost")} placeholder="100" className={INPUT_MONO_CLS} /></div>
                     )}
-                    <div style={{ gridColumn: "span 2" }}><div style={css(LABEL)}>DRIVER · NAME ONLY (optional)</div><input value={state.draft.driverName} onChange={capField("driverName")} placeholder="Add later from the register" style={css(INPUT_HANKEN)} /></div>
+                    <div className="md:col-span-2"><div className={LABEL_CLS}>DRIVER · NAME ONLY (optional)</div><input value={state.draft.driverName} onChange={capField("driverName")} placeholder="Add later from the register" className={INPUT_HANKEN_CLS} /></div>
                   </div>
-                  <div style={css("display:flex;align-items:center;gap:12px;margin-top:18px")}>
-                    <div style={css(`font:700 12px 'Spline Sans Mono';letter-spacing:.6px;padding:12px 18px;border-radius:8px;cursor:pointer;background:var(--accent,#9c3327);color:#fffdf8;transform:rotate(-1deg);box-shadow:0 3px 0 rgba(120,40,30,.35)${state.saving ? ";opacity:.6" : ""}`)} onClick={capSave}>{state.saving ? "SAVING…" : "SAVE TO REGISTER"}</div>
-                    <div style={css("font:600 12px 'Hanken Grotesk';color:#8a8175;cursor:pointer")} onClick={capReset}>Discard</div>
+                  <div className="flex items-center gap-3 mt-[18px]">
+                    <div className={`flex-1 md:flex-none text-center font-spline font-bold text-xs tracking-[0.6px] px-[18px] py-3 rounded-lg cursor-pointer bg-accent text-paper -rotate-[1deg] shadow-[0_3px_0_rgba(120,40,30,0.35)]${state.saving ? " opacity-60" : ""}`} onClick={capSave}>{state.saving ? "SAVING…" : "SAVE TO REGISTER"}</div>
+                    <div className="font-hanken font-semibold text-xs text-faint cursor-pointer" onClick={capReset}>Discard</div>
                   </div>
-                  {state.error && <div style={css("color:#9c3327;font:500 11px 'Hanken Grotesk';margin-top:8px")}>{state.error}</div>}
+                  {state.error && <div className="text-accent font-hanken font-medium text-[11px] mt-2">{state.error}</div>}
                 </div>
               ) : (
-                <div style={css("display:flex;flex-direction:column;justify-content:center;height:280px;color:#a89e8c;font:400 12.5px;line-height:1.6;max-width:340px")}>
-                  <div style={css("font:600 13px 'Spectral',serif;color:#6a6155;margin-bottom:8px")}>How it works</div>
+                <div className="flex flex-col justify-center h-auto md:h-[280px] text-sand text-[12.5px] leading-[1.6] max-w-[340px]">
+                  <div className="font-spectral font-semibold text-[13px] text-muted mb-2">How it works</div>
                   Snap or upload the PCN and the fields fill themselves in. You review and correct anything before saving — what you save is what gets stored. The register checks the PCN number so you don&apos;t log the same PCN twice.
                 </div>
               )}
