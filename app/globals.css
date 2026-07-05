@@ -1,13 +1,27 @@
 @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@400;500;600;700&family=Spectral:ital,wght@0,500;0,600;1,500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-hanken: "Hanken Grotesk", system-ui, sans-serif;
+  --font-spline: "Spline Sans Mono", monospace;
+  --font-spectral: "Spectral", serif;
+
+  --color-accent: #9c3327;
+  --color-ink: #211d18;
+  --color-paper: #fffdf8;
+  --color-cream: #f4f0e6;
+  --color-field: #faf6ec;
+  --color-line: #e2dbcd;
+  --color-line-soft: #ece4d4;
+  --color-muted: #6a6155;
+  --color-faint: #8a8175;
+  --color-sand: #a89e8c;
+}
 
 html,
 body {
   margin: 0;
   background: #f4f0e6;
-}
-
-* {
-  box-sizing: border-box;
 }
 
 ::-webkit-scrollbar {
