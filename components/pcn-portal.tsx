@@ -51,6 +51,11 @@ function Hover({ tag = "div", base, hover, children, ...rest }: { tag?: React.El
 const LABEL = "font:500 9px 'Spline Sans Mono';letter-spacing:.8px;color:#a89e8c;margin-bottom:5px";
 const INPUT_MONO = "width:100%;box-sizing:border-box;background:#faf6ec;border:1px solid #e2dbcd;border-radius:7px;padding:9px 11px;font:600 12px 'Spline Sans Mono';color:#211d18;outline:none";
 const INPUT_HANKEN = "width:100%;box-sizing:border-box;background:#faf6ec;border:1px solid #e2dbcd;border-radius:7px;padding:9px 11px;font:600 12px 'Hanken Grotesk';color:#211d18;outline:none";
+const LABEL_CLS = "font-spline font-medium text-[9px] tracking-[0.8px] text-sand mb-[5px]";
+const INPUT_BASE = "w-full bg-field border border-line rounded-[7px] px-[11px] py-[9px] font-semibold text-[16px] md:text-xs text-ink outline-none";
+const INPUT_MONO_CLS = `${INPUT_BASE} font-spline`;
+const INPUT_HANKEN_CLS = `${INPUT_BASE} font-hanken`;
+const catCls = (c: string) => c === "council" ? "bg-[#e7eef0] text-[#3a5a66]" : "bg-[#f3e3df] text-accent";
 function Field({ label, value, vstyle }: { label: string; value: React.ReactNode; vstyle: string }) {
   return <div><div style={css(LABEL)}>{label}</div><div style={css(vstyle)}>{value}</div></div>;
 }
@@ -243,33 +248,33 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const GRID = "grid-template-columns:96px 138px 1fr 78px 116px 70px";
 
   return (
-    <div style={{ ...css("min-height:100vh;background:#f4f0e6;font-family:'Hanken Grotesk',system-ui,sans-serif;color:#211d18"), "--accent": ACCENT } as React.CSSProperties}>
+    <div className="min-h-screen bg-cream font-hanken text-ink">
       {/* APP BAR */}
-      <header style={css("position:sticky;top:0;z-index:10;background:#fffdf8;border-bottom:1px solid #e2dbcd")}>
-        <div style={css("max-width:1020px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:15px 24px")}>
-          <div style={css("display:flex;align-items:center;gap:12px;cursor:pointer")} onClick={goRegister}>
-            <div style={css("width:34px;height:34px;border:1.5px solid var(--accent,#9c3327);border-radius:6px;display:flex;align-items:center;justify-content:center;transform:rotate(-4deg);font:700 10px 'Spline Sans Mono';color:var(--accent,#9c3327)")}>PCN</div>
+      <header className="sticky top-0 z-10 bg-paper border-b border-line">
+        <div className="max-w-[1020px] mx-auto flex items-center justify-between px-4 py-3 md:px-6 md:py-[15px]">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={goRegister}>
+            <div className="w-[34px] h-[34px] border-[1.5px] border-accent rounded-md flex items-center justify-center -rotate-[4deg] font-spline font-bold text-[10px] text-accent">PCN</div>
             <div>
-              <div style={css("font:600 15px 'Spectral',serif;letter-spacing:.2px")}>PCN Register</div>
-              <div style={css("font:500 9px 'Spline Sans Mono';color:#9a9081;letter-spacing:1.6px")}>CARECO · PCN REGISTER</div>
+              <div className="font-spectral font-semibold text-[15px] tracking-[0.2px]">PCN Register</div>
+              <div className="font-spline font-medium text-[9px] text-[#9a9081] tracking-[1.6px]">CARECO · PCN REGISTER</div>
             </div>
           </div>
-          <div style={css("display:flex;align-items:center;gap:14px")}>
-            <label style={css(`font:700 11px 'Spline Sans Mono';letter-spacing:.5px;color:#6a6155;background:#fffdf8;border:1.5px solid #e2dbcd;padding:8px 13px;border-radius:9px;cursor:pointer${state.importStage === "parsing" ? ";opacity:.6" : ""}`)}>
-              {state.importStage === "parsing" ? "READING…" : "↥ IMPORT XLSX"}
-              <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onImportFile} disabled={state.importStage !== "idle"} style={{ display: "none" }} />
+          <div className="flex items-center gap-2 md:gap-3.5">
+            <label className={`inline-flex items-center justify-center w-10 h-10 md:w-auto md:h-auto md:px-[13px] md:py-2 font-spline font-bold text-[11px] tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer${state.importStage === "parsing" ? " opacity-60" : ""}`}>
+            ↥<span className="hidden md:inline">&nbsp;{state.importStage === "parsing" ? "READING…" : "IMPORT XLSX"}</span>
+              <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onImportFile} disabled={state.importStage !== "idle"} className="hidden" />
             </label>
-            <a href="/api/export" style={css("text-decoration:none;font:700 11px 'Spline Sans Mono';letter-spacing:.5px;color:#6a6155;background:#fffdf8;border:1.5px solid #e2dbcd;padding:8px 13px;border-radius:9px;cursor:pointer")}>↧ EXPORT XLSX</a>
-            <div style={css("text-align:right;font:500 10px 'Spline Sans Mono';color:#8a8175;line-height:1.5")}>
+            <a href="/api/export" className="inline-flex items-center justify-center w-10 h-10 md:w-auto md:h-auto md:px-[13px] md:py-2 no-underline font-spline font-bold text-[11px] tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer">↧<span className="hidden md:inline">&nbsp;EXPORT XLSX</span></a>
+            <div className="hidden md:block text-right font-spline font-medium text-[10px] text-faint leading-normal">
               <div>UK GDPR · name-only</div>
             </div>
           </div>
         </div>
       </header>
 
-      <main style={css("max-width:1020px;margin:0 auto")}>
+      <main className="max-w-[1020px] mx-auto">
         {state.importError && state.importStage === "idle" && (
-          <div style={css("padding:12px 24px 0;color:#9c3327;font:500 11px 'Hanken Grotesk'")}>{state.importError}</div>
+          <div className="px-4 md:px-6 pt-3 text-accent font-hanken font-medium text-[11px]">{state.importError}</div>
         )}
         {/* REGISTER */}
         {state.view === "register" && (
