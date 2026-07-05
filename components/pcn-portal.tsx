@@ -20,43 +20,15 @@ function fmtDate(iso: string | null | undefined): string {
   return parseInt(p[2], 10) + " " + (MONTHS[parseInt(p[1], 10) - 1] || "") + " " + p[0];
 }
 
-const cssCache = new Map<string, React.CSSProperties>();
-function css(str: string): React.CSSProperties {
-  const hit = cssCache.get(str);
-  if (hit) return hit;
-  const out: Record<string, string> = {};
-  for (const decl of str.split(";")) {
-    const i = decl.indexOf(":");
-    if (i === -1) continue;
-    const rawKey = decl.slice(0, i).trim();
-    if (!rawKey) continue;
-    let val = decl.slice(i + 1).trim();
-    const key = rawKey.startsWith("--") ? rawKey : rawKey.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-    if (key === "font" && !/['"]/.test(val) && !/(serif|sans-serif|monospace|system-ui)/.test(val)) {
-      val += " 'Hanken Grotesk',sans-serif";
-    }
-    out[key] = val;
-  }
-  const res = out as React.CSSProperties;
-  cssCache.set(str, res);
-  return res;
-}
-function merge(base: string, extra: React.CSSProperties): React.CSSProperties {
-  return { ...css(base), ...extra };
-}
-const LABEL = "font:500 9px 'Spline Sans Mono';letter-spacing:.8px;color:#a89e8c;margin-bottom:5px";
-const INPUT_MONO = "width:100%;box-sizing:border-box;background:#faf6ec;border:1px solid #e2dbcd;border-radius:7px;padding:9px 11px;font:600 12px 'Spline Sans Mono';color:#211d18;outline:none";
-const INPUT_HANKEN = "width:100%;box-sizing:border-box;background:#faf6ec;border:1px solid #e2dbcd;border-radius:7px;padding:9px 11px;font:600 12px 'Hanken Grotesk';color:#211d18;outline:none";
 const LABEL_CLS = "font-spline font-medium text-[9px] tracking-[0.8px] text-sand mb-[5px]";
 const INPUT_BASE = "w-full bg-field border border-line rounded-[7px] px-[11px] py-[9px] font-semibold text-[16px] md:text-xs text-ink outline-none";
 const INPUT_MONO_CLS = `${INPUT_BASE} font-spline`;
 const INPUT_HANKEN_CLS = `${INPUT_BASE} font-hanken`;
 const catCls = (c: string) => c === "council" ? "bg-[#e7eef0] text-[#3a5a66]" : "bg-[#f3e3df] text-accent";
-function Field({ label, value, vstyle }: { label: string; value: React.ReactNode; vstyle: string }) {
-  return <div><div style={css(LABEL)}>{label}</div><div style={css(vstyle)}>{value}</div></div>;
+function Field({ label, value, vcls }: { label: string; value: React.ReactNode; vcls: string }) {
+  return <div><div className={LABEL_CLS}>{label}</div><div className={vcls}>{value}</div></div>;
 }
 
-const ACCENT = "#9c3327";
 type Category = "council" | "private";
 interface Draft { pcnNumber: string; authority: string; vehicleReg: string; dateOfPcn: string; discountPeriodDays: string; full: string; disc: string; cost: string; driverName: string }
 function emptyDraft(): Draft { return { pcnNumber: "", authority: "", vehicleReg: "", dateOfPcn: "", discountPeriodDays: "", full: "", disc: "", cost: "", driverName: "" }; }
@@ -218,8 +190,6 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   };
 
   /* view-models */
-  const catBg = (c: string) => (c === "council" ? "#e7eef0" : "#f3e3df");
-  const catFg = (c: string) => (c === "council" ? "#3a5a66" : "#9c3327");
   const rowCost = (p: PcnView) => p.category === "private" ? gbp(p.costPence) : gbp(state.showDiscounted ? p.discountedCostPence : p.fullCostPence);
 
   const registerRows = () => {
@@ -327,60 +297,60 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
 
         {/* DETAIL + EDIT */}
         {state.view === "detail" && d && (
-          <div style={css("padding:18px 24px 26px")}>
-            <div style={css("display:flex;align-items:center;gap:14px;margin-bottom:18px")}>
-              <div style={css("font:600 12px 'Spline Sans Mono';color:#8a8175;cursor:pointer")} onClick={goRegister}>← register</div>
-              <div style={css("height:24px;width:1px;background:#e2dbcd")} />
-              <div style={css("font:700 19px 'Spline Sans Mono';letter-spacing:.5px")}>{d.vehicleReg}</div>
-              <span style={merge("font:600 9px 'Spline Sans Mono';letter-spacing:.6px;padding:3px 8px;border-radius:4px", { background: catBg(d.category), color: catFg(d.category) })}>{d.category}</span>
+          <div className="px-4 pt-4 pb-6 md:px-6 md:pt-[18px] md:pb-[26px]">
+            <div className="flex flex-wrap items-center gap-3.5 mb-[18px]">
+              <div className="font-spline font-semibold text-xs text-faint cursor-pointer" onClick={goRegister}>← register</div>
+              <div className="h-6 w-px bg-line" />
+              <div className="font-spline font-bold text-[19px] tracking-[0.5px]">{d.vehicleReg}</div>
+              <span className={`font-spline font-semibold text-[9px] tracking-[0.6px] px-2 py-[3px] rounded ${catCls(d.category)}`}>{d.category}</span>
             </div>
-            <div style={css("display:grid;grid-template-columns:1.25fr 1fr;gap:24px;align-items:start")}>
-              <div style={css("background:#fffdf8;border:1px solid #e2dbcd;border-radius:11px;padding:20px 22px")}>
-                <div style={css("font:600 14px 'Spectral',serif;margin-bottom:16px")}>Stored record</div>
-                <div style={css("display:grid;grid-template-columns:1fr 1fr;gap:16px 22px")}>
-                  <Field label="PCN NUMBER" value={d.pcnNumber} vstyle="font:600 14px 'Spline Sans Mono'" />
-                  <Field label="ISSUING AUTHORITY" value={d.authority} vstyle="font:500 14px" />
-                  <Field label="VEHICLE REG" value={d.vehicleReg} vstyle="font:600 14px 'Spline Sans Mono'" />
-                  <Field label="DATE OF PCN" value={fmtDate(d.dateOfPcn)} vstyle="font:500 14px 'Spline Sans Mono'" />
-                  <Field label="DISCOUNT PERIOD" value={d.discountPeriodDays != null ? `${d.discountPeriodDays} days` : "—"} vstyle="font:500 14px 'Spline Sans Mono'" />
+            <div className="grid grid-cols-1 md:grid-cols-[1.25fr_1fr] gap-6 items-start">
+              <div className="bg-paper border border-line rounded-[11px] p-4 md:px-[22px] md:py-5">
+                <div className="font-spectral font-semibold text-sm mb-4">Stored record</div>
+                <div className="grid grid-cols-2 gap-x-[22px] gap-y-4">
+                  <Field label="PCN NUMBER" value={d.pcnNumber} vcls="font-spline font-semibold text-sm" />
+                  <Field label="ISSUING AUTHORITY" value={d.authority} vcls="font-medium text-sm" />
+                  <Field label="VEHICLE REG" value={d.vehicleReg} vcls="font-spline font-semibold text-sm" />
+                  <Field label="DATE OF PCN" value={fmtDate(d.dateOfPcn)} vcls="font-spline font-medium text-sm" />
+                  <Field label="DISCOUNT PERIOD" value={d.discountPeriodDays != null ? `${d.discountPeriodDays} days` : "—"} vcls="font-spline font-medium text-sm" />
                   {d.category === "council" ? (
                     <>
-                      <Field label="FULL COST" value={gbp(d.fullCostPence)} vstyle="font:600 14px 'Spline Sans Mono'" />
-                      <Field label="DISCOUNTED COST" value={gbp(d.discountedCostPence)} vstyle="font:600 14px 'Spline Sans Mono'" />
+                      <Field label="FULL COST" value={gbp(d.fullCostPence)} vcls="font-spline font-semibold text-sm" />
+                      <Field label="DISCOUNTED COST" value={gbp(d.discountedCostPence)} vcls="font-spline font-semibold text-sm" />
                     </>
                   ) : (
-                    <Field label="COST OF PCN" value={gbp(d.costPence)} vstyle="font:600 14px 'Spline Sans Mono'" />
+                    <Field label="COST OF PCN" value={gbp(d.costPence)} vcls="font-spline font-semibold text-sm" />
                   )}
                 </div>
 
-                <div style={css("margin-top:18px;padding-top:16px;border-top:1px solid #ece4d4;display:grid;grid-template-columns:1fr 1fr;gap:13px 16px")}>
-                  <div><div style={css(LABEL)}>DRIVER (name only)</div><input value={state.edit.driverName} onChange={editField("driverName")} placeholder="—" style={css(INPUT_HANKEN)} /></div>
-                  <div><div style={css(LABEL)}>STATUS</div><input value={state.edit.status} onChange={editField("status")} placeholder="e.g. Paid, Appeal submitted" style={css(INPUT_HANKEN)} /></div>
+                <div className="mt-[18px] pt-4 border-t border-line-soft grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-[13px]">
+                  <div><div className={LABEL_CLS}>DRIVER (name only)</div><input value={state.edit.driverName} onChange={editField("driverName")} placeholder="—" className={INPUT_HANKEN_CLS} /></div>
+                  <div><div className={LABEL_CLS}>STATUS</div><input value={state.edit.status} onChange={editField("status")} placeholder="e.g. Paid, Appeal submitted" className={INPUT_HANKEN_CLS} /></div>
                   {d.category === "council" && (
                     <>
-                      <div><div style={css(LABEL)}>ALI PAID?</div><input value={state.edit.aliPaid} onChange={editField("aliPaid")} style={css(INPUT_MONO)} /></div>
-                      <div><div style={css(LABEL)}>MONEY REQUESTED?</div><input value={state.edit.moneyRequested} onChange={editField("moneyRequested")} style={css(INPUT_MONO)} /></div>
-                      <div><div style={css(LABEL)}>DRIVER PAID?</div><input value={state.edit.driverPaid} onChange={editField("driverPaid")} style={css(INPUT_MONO)} /></div>
+                      <div><div className={LABEL_CLS}>ALI PAID?</div><input value={state.edit.aliPaid} onChange={editField("aliPaid")} className={INPUT_MONO_CLS} /></div>
+                      <div><div className={LABEL_CLS}>MONEY REQUESTED?</div><input value={state.edit.moneyRequested} onChange={editField("moneyRequested")} className={INPUT_MONO_CLS} /></div>
+                      <div><div className={LABEL_CLS}>DRIVER PAID?</div><input value={state.edit.driverPaid} onChange={editField("driverPaid")} className={INPUT_MONO_CLS} /></div>
                     </>
                   )}
-                  <div style={{ gridColumn: "span 2" }}><div style={css(LABEL)}>NOTES</div><textarea value={state.edit.notes} onChange={editField("notes")} rows={2} style={css(INPUT_HANKEN)} /></div>
+                  <div className="md:col-span-2"><div className={LABEL_CLS}>NOTES</div><textarea value={state.edit.notes} onChange={editField("notes")} rows={2} className={INPUT_HANKEN_CLS} /></div>
                 </div>
 
-                <div style={css("display:flex;align-items:center;gap:12px;margin-top:16px")}>
-                  <div style={css(`font:700 12px 'Spline Sans Mono';letter-spacing:.6px;padding:11px 16px;border-radius:8px;cursor:pointer;background:var(--accent,#9c3327);color:#fffdf8;box-shadow:0 3px 0 rgba(120,40,30,.35)${state.saving ? ";opacity:.6" : ""}`)} onClick={saveEdit}>{state.saving ? "SAVING…" : "SAVE CHANGES"}</div>
+                <div className="flex items-center gap-3 mt-4">
+                  <div className={`font-spline font-bold text-xs tracking-[0.6px] px-4 py-[11px] rounded-lg cursor-pointer bg-accent text-paper shadow-[0_3px_0_rgba(120,40,30,0.35)]${state.saving ? " opacity-60" : ""}`} onClick={saveEdit}>{state.saving ? "SAVING…" : "SAVE CHANGES"}</div>
                 </div>
-                {state.error && <div style={css("color:#9c3327;font:500 11px 'Hanken Grotesk';margin-top:8px")}>{state.error}</div>}
+                {state.error && <div className="text-accent font-hanken font-medium text-[11px] mt-2">{state.error}</div>}
               </div>
 
               <div>
-                <div style={css("font:500 9px 'Spline Sans Mono';letter-spacing:.8px;color:#a89e8c;margin-bottom:9px")}>PCN ON FILE</div>
+                <div className="font-spline font-medium text-[9px] tracking-[0.8px] text-sand mb-[9px]">PCN ON FILE</div>
                 {d.hasImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={`/api/pcn-image/${d.id}`} alt="PCN on file" style={css("width:100%;border-radius:11px;border:1px solid #e2dbcd;display:block")} />
+                  <img src={`/api/pcn-image/${d.id}`} alt="PCN on file" className="w-full rounded-[11px] border border-line block" />
                 ) : (
-                  <div style={css("width:100%;height:280px;border-radius:11px;border:1px dashed #d8cfbd;background:repeating-linear-gradient(45deg,#f6f1e6,#f6f1e6 9px,#f1ebdd 9px,#f1ebdd 18px);display:flex;align-items:center;justify-content:center;font:500 10px 'Spline Sans Mono';color:#b3a892;letter-spacing:1px")}>no PCN image</div>
+                  <div className="w-full h-[280px] rounded-[11px] border border-dashed border-[#d8cfbd] bg-[repeating-linear-gradient(45deg,#f6f1e6,#f6f1e6_9px,#f1ebdd_9px,#f1ebdd_18px)] flex items-center justify-center font-spline font-medium text-[10px] text-[#b3a892] tracking-[1px]">no PCN image</div>
                 )}
-                <div style={css("font:400 10.5px;color:#a89e8c;margin-top:8px;line-height:1.5")}>Held in private storage for audit.</div>
+                <div className="text-[10.5px] text-sand mt-2 leading-normal">Held in private storage for audit.</div>
               </div>
             </div>
           </div>
@@ -479,16 +449,16 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
         )}
 
         {(state.importStage === "confirm" || state.importStage === "resetting") && state.importPreview && (
-          <div style={css("position:fixed;inset:0;background:rgba(33,29,24,.45);display:flex;align-items:center;justify-content:center;z-index:50")}>
-            <div style={css("background:#fffdf8;border:1px solid #e2dbcd;border-radius:13px;padding:22px 24px;width:min(440px,90vw);box-shadow:0 12px 40px rgba(33,29,24,.25)")}>
-              <div style={css("font:600 16px 'Spectral',serif;margin-bottom:10px")}>Reset register from file?</div>
-              <div style={css("font:400 12.5px;color:#6a6155;line-height:1.6")}>
+          <div className="fixed inset-0 bg-ink/45 flex items-center justify-center z-50 p-4">
+            <div className="bg-paper border border-line rounded-[13px] px-6 py-[22px] w-full max-w-[440px] max-h-[85vh] overflow-auto shadow-[0_12px_40px_rgba(33,29,24,0.25)]">
+              <div className="font-spectral font-semibold text-base mb-2.5">Reset register from file?</div>
+              <div className="text-[12.5px] text-muted leading-[1.6]">
                 Replace the {state.importPreview.currentRows} PCN{state.importPreview.currentRows === 1 ? "" : "s"} in the register with {state.importPreview.fileRows} from the file ({state.importPreview.privateCount} private + {state.importPreview.councilCount} council)? Changes made in the app will be lost. Letter images are kept where the PCN number still matches.
               </div>
-              {state.importError && <div style={css("color:#9c3327;font:500 11px 'Hanken Grotesk';margin-top:10px")}>{state.importError}</div>}
-              <div style={css("display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-top:18px")}>
-                <div style={css("font:600 12px 'Hanken Grotesk';color:#8a8175;cursor:pointer")} onClick={cancelImport}>Cancel</div>
-                <div style={css(`font:700 12px 'Spline Sans Mono';letter-spacing:.6px;padding:11px 16px;border-radius:8px;cursor:pointer;background:var(--accent,#9c3327);color:#fffdf8;box-shadow:0 3px 0 rgba(120,40,30,.35)${state.importStage === "resetting" ? ";opacity:.6" : ""}`)} onClick={confirmReset}>{state.importStage === "resetting" ? "RESETTING…" : "RESET REGISTER"}</div>
+              {state.importError && <div className="text-accent font-hanken font-medium text-[11px] mt-2.5">{state.importError}</div>}
+              <div className="flex items-center justify-end gap-4 mt-[18px]">
+                <div className="font-hanken font-semibold text-xs text-faint cursor-pointer" onClick={cancelImport}>Cancel</div>
+                <div className={`font-spline font-bold text-xs tracking-[0.6px] px-4 py-[11px] rounded-lg cursor-pointer bg-accent text-paper shadow-[0_3px_0_rgba(120,40,30,0.35)]${state.importStage === "resetting" ? " opacity-60" : ""}`} onClick={confirmReset}>{state.importStage === "resetting" ? "RESETTING…" : "RESET REGISTER"}</div>
               </div>
             </div>
           </div>
