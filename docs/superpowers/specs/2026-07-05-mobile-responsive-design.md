@@ -15,26 +15,33 @@ App is desktop-only in practice. All styling is inline via the `css()` string he
 
 ## Approach (decided)
 
-CSS classes + media queries. Single breakpoint: `@media (max-width: 720px)` in `app/globals.css`.
+**Tailwind v4, full conversion.** All `css()` string styling in `pcn-portal.tsx` is rewritten as Tailwind classes; the responsive behaviour is expressed mobile-first with `md:` (768px) as the desktop breakpoint.
 
-- ~15 layout containers get `pp-*` classNames. Their **layout** props (display, grid-template, flex-direction, width, padding, gap) move from inline `css()` strings into `globals.css`: desktop rules on the class, mobile overrides in the media block.
-- Visual props (colors, fonts, borders, radii) stay inline. Rule: any property that changes at the breakpoint must live in CSS (inline beats class); properties that never change may stay inline.
-- No logic changes. JSX changes limited to adding `className`s and wrapping two button labels in spans.
-- Exception: `@media (max-width:720px) { .pp-portal input, .pp-portal textarea { font-size:16px !important } }` — required to beat inline 12px font and prevent iOS focus-zoom.
+Setup:
+- Install `tailwindcss`, `@tailwindcss/postcss`, `postcss`; add `postcss.config.mjs`.
+- `globals.css`: `@import "tailwindcss"`; keep the Google-fonts `@import` and `rdspin`/`rdnew` keyframes; define `@theme` tokens — fonts (`--font-hanken`, `--font-spline`, `--font-spectral`) and the palette (accent `#9c3327`, ink `#211d18`, paper `#fffdf8`, cream `#f4f0e6`, field `#faf6ec`, line `#e2dbcd`, line-soft `#ece4d4`, muted `#6a6155`, faint `#8a8175`, sand `#a89e8c`, plus council/private chip colours). One-off values use arbitrary classes (`text-[12.5px]`).
 
-Rejected: `useIsMobile` JS hook (SSR desktop-first flash, dual code paths); Tailwind refactor (whole-UI rewrite + regression risk for one fix).
+Conversion rules:
+- Delete `css()`, `cssCache`, `merge()`, and the JS `Hover` component — `hover:` variants replace it. `Field` takes className props instead of style strings. Shared input/label styles become shared class-string constants (`LABEL`, `INPUT_MONO`, `INPUT_HANKEN` stay, as Tailwind class strings).
+- State-dependent styling (active chip, category colours, `newId` highlight, saving-dim) becomes conditional class strings.
+- Register-row cells use explicit `order-*` / `col-span-*` placement on mobile and `md:` resets for the 6-col desktop row — no grid-template-areas needed.
+- iOS focus-zoom fix falls out naturally: inputs get `text-[16px] md:text-xs`-style classes (16px below md).
+- No logic changes; JSX changes limited to className rewrites plus wrapping the two xlsx button labels in spans.
+- Desktop must remain visually identical (same px values via tokens/arbitrary values).
+
+Rejected: `useIsMobile` JS hook (SSR desktop-first flash, dual code paths); plain CSS classes + media queries in globals.css (approved initially, superseded — user wants the codebase on Tailwind); Tailwind for responsive-layer only (two styling systems coexisting).
 
 ## Per-screen behaviour
 
 ### Navbar (`header`)
 - Desktop: unchanged.
-- Mobile: GDPR text (`UK GDPR · name-only`) hidden. IMPORT/EXPORT label text wrapped in `<span class="pp-btn-txt">`, hidden on mobile → icon-only ↥ / ↧ buttons, ≥40px tap targets. Glyph stays constant during parsing; "READING…" state conveyed by the existing opacity dim. Inner padding 15px 24px → 12px 16px.
+- Mobile: GDPR text (`UK GDPR · name-only`) hidden. IMPORT/EXPORT label text wrapped in a `hidden md:inline` span → icon-only ↥ / ↧ buttons, ≥40px tap targets. Glyph stays constant during parsing; "READING…" state conveyed by the existing opacity dim. Inner padding 15px 24px → 12px 16px.
 
 ### Register
-- Toolbar stacks: row 1 title + count; row 2 search (flex:1, full remaining width) + ADD PCN beside it. Search input `width:220px` → `width:100%` via class.
+- Toolbar stacks: row 1 title + count; row 2 search (flex-1, full remaining width) + ADD PCN beside it. Search input `w-[220px]` desktop, full-width mobile.
 - Category chips row: unchanged (fits).
-- Column-header row: hidden on mobile. Sorting is not available on mobile (default logged-order). The full/discounted cost toggle is preserved as a small right-aligned chip rendered above the list, shown only on mobile (CSS-toggled visibility, both elements always in DOM).
-- Rows → cards. Same DOM; the 6 cells get grid-area classes (`pp-c-reg`, `pp-c-num`, `pp-c-auth`, `pp-c-cat`, `pp-c-date`, `pp-c-cost`). Mobile template:
+- Column-header row: `hidden md:grid`. Sorting is not available on mobile (default logged-order). The full/discounted cost toggle is preserved as a small right-aligned chip above the list, `md:hidden` (both elements always in DOM).
+- Rows → cards. Same DOM; mobile is a 2-col grid using `order-*` + `col-span-2` placement, `md:` resets to the 6-col row. Card layout:
 
 ```
 "reg  cost"
@@ -43,19 +50,19 @@ Rejected: `useIsMobile` JS hook (SSR desktop-first flash, dual code paths); Tail
 "date date"
 ```
 
-Card: 1px solid #ece4d4 border, radius 10px, background #fffdf8, padding ~12px 14px, 10px gap between cards. Cost right-aligned, category chip `justify-self:end`. Authority keeps existing ellipsis. `newId` highlight background still works (it's inline background on the row).
+Card: 1px solid #ece4d4 border, radius 10px, background #fffdf8, padding ~12px 14px, 10px gap between cards. Cost right-aligned, category chip `justify-self-end`. Authority keeps existing ellipsis. `newId` highlight becomes a conditional background class on the row.
 
 ### Add a PCN (capture)
-- `.pp-cap-grid`: desktop `340px 1fr` → mobile single column (image/options first in DOM, then panel).
+- Capture grid: `grid-cols-1 md:grid-cols-[340px_1fr]` (image/options first in DOM, then panel).
 - Idle stage: camera + upload tiles full width (already a column).
-- Draft stage: image preview capped on mobile — `max-height:220px; object-fit:contain` (thumbnail reminder; full image lives in detail view). Check & save panel below it.
-- Check & save fields grid: `1fr 1fr` → single column on mobile. `gridColumn:"span 2"` inline styles on driver/notes replaced by `pp-span2` class (desktop `grid-column:span 2`, mobile `auto`). Category segmented control full width (already flex:1 halves).
+- Draft stage: image preview capped on mobile — `max-h-[220px] object-contain md:max-h-none` (thumbnail reminder; full image lives in detail view). Check & save panel below it.
+- Check & save fields grid: `grid-cols-1 md:grid-cols-2`; driver/notes cells `md:col-span-2`. Category segmented control full width (already flex-1 halves).
 - SAVE TO REGISTER button grows on mobile (flex:1, centered text); Discard stays beside it in the same row. Panel padding 20px 22px → 16px.
 
 ### Detail
-- `.pp-detail-grid`: `1.25fr 1fr` → single column (record card first, image second).
+- Detail grid: `grid-cols-1 md:grid-cols-[1.25fr_1fr]` (record card first, image second).
 - Read-only "stored record" grid: **stays 2-col on mobile** (short values, keeps page compact).
-- Edit inputs grid: 2-col → single column on mobile; notes uses `pp-span2`.
+- Edit inputs grid: `grid-cols-1 md:grid-cols-2`; notes `md:col-span-2`.
 - Back-row (← register / reg / chip) wraps naturally; no change expected.
 
 ### Reset-register dialog
@@ -65,8 +72,8 @@ Card: 1px solid #ece4d4 border, radius 10px, background #fffdf8, padding ~12px 1
 
 - No sorting UI on mobile register.
 - No image zoom/lightbox.
-- No Tailwind/CSS-module migration.
-- Desktop rendering must remain visually identical.
+- No component-library adoption (shadcn etc.) — plain Tailwind classes only.
+- No redesign: desktop rendering must remain visually identical.
 
 ## Testing
 
