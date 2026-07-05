@@ -239,13 +239,12 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   };
 
   const mark = (k: State["sort"]) => (state.sort === k ? (state.sortDir < 0 ? "↓" : "↑") : "");
-  const chip = (key: State["cat"], label: string) => ({ key, label, bg: state.cat === key ? "#211d18" : "#fffdf8", fg: state.cat === key ? "#fffdf8" : "#6a6155", bd: state.cat === key ? "#211d18" : "#e2dbcd" });
 
   const total = state.pcns.length;
   const rows = registerRows();
   const d = byId(state.selectedId);
   const dupe = !!state.draft && state.pcns.some((p) => p.pcnNumber.toLowerCase() === state.draft!.pcnNumber.trim().toLowerCase());
-  const GRID = "grid-template-columns:96px 138px 1fr 78px 116px 70px";
+  const GRID_COLS = "md:grid-cols-[96px_138px_1fr_78px_116px_70px]";
 
   return (
     <div className="min-h-screen bg-cream font-hanken text-ink">
@@ -279,49 +278,53 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
         {/* REGISTER */}
         {state.view === "register" && (
           <div>
-            <div style={css("display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 24px 14px")}>
+            <div className="flex flex-col gap-3 px-4 pt-4 pb-3 md:flex-row md:items-center md:justify-between md:gap-4 md:px-6 md:pt-[18px] md:pb-[14px]">
               <div>
-                <div style={css("font:600 20px 'Spectral',serif")}>PCN register</div>
-                <div style={css("font:400 11.5px;color:#8a8175;margin-top:2px")}>{total}{total === 1 ? " PCN logged" : " PCNs logged"} · stored PCNs, replacing the spreadsheet</div>
+                <div className="font-spectral font-semibold text-xl">PCN register</div>
+                <div className="text-[11.5px] text-faint mt-[2px]">{total}{total === 1 ? " PCN logged" : " PCNs logged"} · stored PCNs, replacing the spreadsheet</div>
               </div>
-              <div style={css("display:flex;align-items:center;gap:10px")}>
-                <div style={css("display:flex;align-items:center;gap:8px;background:#fffdf8;border:1.5px solid #e2dbcd;border-radius:9px;padding:0 12px")}>
-                  <span style={css("font:600 12px 'Spline Sans Mono';color:#a89e8c")}>⌕</span>
-                  <input value={state.q} onChange={onSearch} placeholder="Search reg, PCN, authority, driver" style={css("border:none;outline:none;background:transparent;font:500 12px 'Hanken Grotesk';color:#211d18;width:220px;padding:9px 2px")} />
+              <div className="flex items-center gap-2.5">
+                <div className="flex flex-1 md:flex-none items-center gap-2 bg-paper border-[1.5px] border-line rounded-[9px] px-3">
+                  <span className="font-spline font-semibold text-xs text-sand">⌕</span>
+                  <input value={state.q} onChange={onSearch} placeholder="Search reg, PCN, authority, driver" className="border-none outline-none bg-transparent font-hanken font-medium text-[16px] md:text-xs text-ink w-full md:w-[220px] py-[9px] px-[2px]" />
                 </div>
-                <div style={css("display:flex;align-items:center;gap:8px;font:700 11px 'Spline Sans Mono';letter-spacing:.5px;color:#fffdf8;background:var(--accent,#9c3327);padding:9px 15px;border-radius:9px;cursor:pointer;transform:rotate(-1deg);box-shadow:0 2px 0 rgba(120,40,30,.35)")} onClick={openCapture}>＋ ADD PCN</div>
+                <div className="flex shrink-0 items-center gap-2 font-spline font-bold text-[11px] tracking-[0.5px] text-paper bg-accent px-[15px] py-[9px] rounded-[9px] cursor-pointer -rotate-[1deg] shadow-[0_2px_0_rgba(120,40,30,0.35)] whitespace-nowrap" onClick={openCapture}>＋ ADD PCN</div>
               </div>
             </div>
 
-            <div style={css("display:flex;align-items:center;gap:8px;padding:0 24px 14px")}>
-              {[chip("all", "All"), chip("council", "Council"), chip("private", "Private")].map((c) => (
-                <div key={c.key} style={merge("font:600 11px 'Hanken Grotesk';padding:7px 13px;border-radius:7px;cursor:pointer", { background: c.bg, color: c.fg, border: `1px solid ${c.bd}` })} onClick={() => setCat(c.key)}>{c.label}</div>
+            <div className="flex items-center gap-2 px-4 md:px-6 pb-[14px]">
+              {(["all", "council", "private"] as const).map((key) => (
+                <div key={key} className={`font-hanken font-semibold text-[11px] px-[13px] py-[7px] rounded-[7px] cursor-pointer border ${state.cat === key ? "bg-ink text-paper border-ink" : "bg-paper text-muted border-line"}`} onClick={() => setCat(key)}>{key === "all" ? "All" : key === "council" ? "Council" : "Private"}</div>
               ))}
             </div>
 
-            <div style={css("padding:0 24px 24px")}>
-              <div style={css(`font:500 9px 'Spline Sans Mono';letter-spacing:1px;color:#a89e8c;display:grid;${GRID};gap:12px;padding:0 12px 9px;border-bottom:1.5px solid #211d18`)}>
-                <span style={{ cursor: "pointer" }} onClick={() => toggleSort("reg")}>VEHICLE {mark("reg")}</span>
+            <div className="flex justify-end px-4 pb-2 md:hidden">
+              <div className="font-spline font-medium text-[9px] tracking-[1px] text-sand bg-paper border border-line rounded-md px-2.5 py-1.5 cursor-pointer" onClick={toggleDiscounted} title="Toggle full / discounted cost (council)">{state.showDiscounted ? "DISCOUNTED" : "FULL COST"} ⇄</div>
+            </div>
+
+            <div className="px-4 pb-6 md:px-6">
+              <div className={`hidden md:grid ${GRID_COLS} gap-3 font-spline font-medium text-[9px] tracking-[1px] text-sand px-3 pb-[9px] border-b-[1.5px] border-ink`}>
+                <span className="cursor-pointer" onClick={() => toggleSort("reg")}>VEHICLE {mark("reg")}</span>
                 <span>PCN NUMBER</span>
-                <span style={{ cursor: "pointer" }} onClick={() => toggleSort("authority")}>AUTHORITY · DRIVER {mark("authority")}</span>
+                <span className="cursor-pointer" onClick={() => toggleSort("authority")}>AUTHORITY · DRIVER {mark("authority")}</span>
                 <span>CATEGORY</span>
-                <span style={{ cursor: "pointer" }} onClick={() => toggleSort("date")}>DATE OF PCN {mark("date")}</span>
-                <span style={{ textAlign: "right", cursor: "pointer" }} onClick={toggleDiscounted} title="Toggle full / discounted cost (council)">{state.showDiscounted ? "DISCOUNTED" : "FULL COST"}</span>
+                <span className="cursor-pointer" onClick={() => toggleSort("date")}>DATE OF PCN {mark("date")}</span>
+                <span className="text-right cursor-pointer" onClick={toggleDiscounted} title="Toggle full / discounted cost (council)">{state.showDiscounted ? "DISCOUNTED" : "FULL COST"}</span>
               </div>
 
               {rows.map((p) => (
-                <Hover key={p.id}
-                  base={merge(`display:grid;${GRID};gap:12px;align-items:center;padding:12px;border-bottom:1px solid #ece4d4;cursor:pointer;border-radius:7px`, { background: p.id === state.newId ? "#fff6df" : "transparent" })}
-                  hover={{ background: "#faf6ec" }} onClick={() => openDetail(p.id)}>
-                  <span style={css("font:600 12.5px 'Spline Sans Mono'")}>{p.vehicleReg}</span>
-                  <span style={css("font:500 11.5px 'Spline Sans Mono';color:#6a6155")}>{p.pcnNumber}</span>
-                  <span style={css("overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 12.5px")}>{p.authority} <span style={{ color: "#bcb3a0" }}>·</span> <span style={css("color:#8a8175;font-weight:400")}>{p.driverName || "— unassigned"}</span></span>
-                  <span><span style={merge("font:600 9px 'Spline Sans Mono';letter-spacing:.5px;padding:3px 8px;border-radius:4px", { background: catBg(p.category), color: catFg(p.category) })}>{p.category}</span></span>
-                  <span style={css("font:500 11.5px 'Spline Sans Mono';color:#6a6155")}>{fmtDate(p.dateOfPcn)}</span>
-                  <span style={css("text-align:right;font:600 12.5px 'Spline Sans Mono'")}>{rowCost(p)}</span>
-                </Hover>
+                <div key={p.id}
+                  className={`grid grid-cols-2 ${GRID_COLS} gap-x-3 gap-y-1 md:gap-3 items-center p-3 md:px-3 cursor-pointer rounded-[10px] md:rounded-[7px] border border-line-soft md:border-x-0 md:border-t-0 mb-2.5 md:mb-0 md:hover:bg-field ${p.id === state.newId ? "bg-[#fff6df]" : "bg-paper md:bg-transparent"}`}
+                  onClick={() => openDetail(p.id)}>
+                  <span className="order-1 md:order-none font-spline font-semibold text-[12.5px]">{p.vehicleReg}</span>
+                  <span className="order-3 md:order-none font-spline font-medium text-[11.5px] text-muted">{p.pcnNumber}</span>
+                  <span className="order-5 md:order-none col-span-2 md:col-span-1 truncate font-medium text-[12.5px]">{p.authority} <span className="text-[#bcb3a0]">·</span> <span className="text-faint font-normal">{p.driverName || "— unassigned"}</span></span>
+                  <span className="order-4 md:order-none justify-self-end md:justify-self-auto"><span className={`font-spline font-semibold text-[9px] tracking-[0.5px] px-2 py-[3px] rounded ${catCls(p.category)}`}>{p.category}</span></span>
+                  <span className="order-6 md:order-none col-span-2 md:col-span-1 font-spline font-medium text-[11.5px] text-muted">{fmtDate(p.dateOfPcn)}</span>
+                  <span className="order-2 md:order-none text-right font-spline font-semibold text-[12.5px]">{rowCost(p)}</span>
+                </div>
               ))}
-              {rows.length === 0 && <div style={css("text-align:center;padding:40px 0;color:#a89e8c;font:400 13px")}>No PCNs match — clear the search or add a PCN.</div>}
+              {rows.length === 0 && <div className="text-center py-10 text-sand text-[13px]">No PCNs match — clear the search or add a PCN.</div>}
             </div>
           </div>
         )}
