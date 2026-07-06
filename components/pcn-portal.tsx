@@ -25,8 +25,9 @@ const INPUT_BASE = "w-full bg-field border border-line rounded-[7px] px-[11px] p
 const INPUT_MONO_CLS = `${INPUT_BASE} font-spline`;
 const INPUT_HANKEN_CLS = `${INPUT_BASE} font-hanken`;
 const catCls = (c: string) => c === "council" ? "bg-[#e7eef0] text-[#3a5a66]" : "bg-[#f3e3df] text-accent";
+const GRID_COLS = "md:grid-cols-[96px_138px_1fr_78px_116px_70px]";
 function Field({ label, value, vcls }: { label: string; value: React.ReactNode; vcls: string }) {
-  return <div><div className={LABEL_CLS}>{label}</div><div className={vcls}>{value}</div></div>;
+  return <div className="min-w-0"><div className={LABEL_CLS}>{label}</div><div className={`${vcls} break-words`}>{value}</div></div>;
 }
 
 type Category = "council" | "private";
@@ -210,7 +211,6 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const rows = registerRows();
   const d = byId(state.selectedId);
   const dupe = !!state.draft && state.pcns.some((p) => p.pcnNumber.toLowerCase() === state.draft!.pcnNumber.trim().toLowerCase());
-  const GRID_COLS = "md:grid-cols-[96px_138px_1fr_78px_116px_70px]";
 
   return (
     <div className="min-h-screen bg-cream font-hanken text-ink">
@@ -250,7 +250,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                 <div className="text-[11.5px] text-faint mt-[2px]">{total}{total === 1 ? " PCN logged" : " PCNs logged"} · stored PCNs, replacing the spreadsheet</div>
               </div>
               <div className="flex items-center gap-2.5">
-                <div className="flex flex-1 md:flex-none items-center gap-2 bg-paper border-[1.5px] border-line rounded-[9px] px-3">
+                <div className="flex flex-1 min-w-0 md:flex-none items-center gap-2 bg-paper border-[1.5px] border-line rounded-[9px] px-3">
                   <span className="font-spline font-semibold text-xs text-sand">⌕</span>
                   <input value={state.q} onChange={onSearch} placeholder="Search reg, PCN, authority, driver" className="border-none outline-none bg-transparent font-hanken font-medium text-[16px] md:text-xs text-ink w-full md:w-[220px] py-[9px] px-[2px]" />
                 </div>
@@ -280,7 +280,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
 
               {rows.map((p) => (
                 <div key={p.id}
-                  className={`grid grid-cols-2 ${GRID_COLS} gap-x-3 gap-y-1 md:gap-3 items-center p-3 md:px-3 cursor-pointer rounded-[10px] md:rounded-[7px] border border-line-soft md:border-x-0 md:border-t-0 mb-2.5 md:mb-0 md:hover:bg-field ${p.id === state.newId ? "bg-[#fff6df]" : "bg-paper md:bg-transparent"}`}
+                  className={`grid grid-cols-2 ${GRID_COLS} gap-x-3 gap-y-1 md:gap-3 items-center p-3 cursor-pointer rounded-[10px] md:rounded-[7px] border border-line-soft md:border-x-0 md:border-t-0 mb-2.5 md:mb-0 md:hover:bg-field ${p.id === state.newId ? "bg-[#fff6df]" : "bg-paper md:bg-transparent"}`}
                   onClick={() => openDetail(p.id)}>
                   <span className="order-1 md:order-none font-spline font-semibold text-[12.5px]">{p.vehicleReg}</span>
                   <span className="order-3 md:order-none font-spline font-medium text-[11.5px] text-muted">{p.pcnNumber}</span>
