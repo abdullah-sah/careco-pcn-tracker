@@ -41,6 +41,29 @@ function StatusSelect({ value, onChange }: { value: string; onChange: (v: string
   );
 }
 
+/* Claude vision reads at most 2576px on the long edge — resizing client-side keeps
+   uploads small on mobile data with no accuracy loss, and re-encoding to JPEG also
+   converts iPhone HEIC photos into a format the OCR API accepts. */
+const MAX_IMG_EDGE = 2576;
+async function downscaleImage(f: File): Promise<{ blob: Blob; name: string }> {
+  try {
+    const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
+    const scale = Math.min(1, MAX_IMG_EDGE / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no canvas context");
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.9));
+    if (!blob) throw new Error("encode failed");
+    return { blob, name: f.name.replace(/\.[^.]+$/, "") + ".jpg" };
+  } catch {
+    return { blob: f, name: f.name }; // undecodable in this browser — upload the original
+  }
+}
+
 type Category = "council" | "private";
 interface Draft { pcnNumber: string; authority: string; vehicleReg: string; dateOfPcn: string; discountPeriodDays: string; full: string; disc: string; cost: string; driverName: string; status: string }
 function emptyDraft(): Draft { return { pcnNumber: "", authority: "", vehicleReg: "", dateOfPcn: "", discountPeriodDays: "", full: "", disc: "", cost: "", driverName: "", status: DEFAULT_STATUS }; }
@@ -93,13 +116,16 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => update({ capPreview: rd.result as string });
-    rd.readAsDataURL(f);
     update({ capStage: "extracting", capFileName: f.name });
-    const fd = new FormData();
-    fd.append("file", f);
-    fetch("/api/ocr", { method: "POST", body: fd })
+    downscaleImage(f)
+      .then(({ blob, name }) => {
+        const rd = new FileReader();
+        rd.onload = () => update({ capPreview: rd.result as string });
+        rd.readAsDataURL(blob);
+        const fd = new FormData();
+        fd.append("file", blob, name);
+        return fetch("/api/ocr", { method: "POST", body: fd });
+      })
       .then((r) => r.json())
       .then((data: { imageUrl: string | null; extracted: any; error?: string }) => {
         if (data.error) {
