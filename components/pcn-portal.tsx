@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PcnView } from "@/lib/pcn/view";
 import { createPcn, updatePcn, previewReset, resetFromXlsx } from "@/app/actions";
 import { poundsToPence } from "@/lib/convert";
+import { STATUSES, DEFAULT_STATUS } from "@/lib/pcn/status";
 
 /* ---------- helpers ---------- */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -29,17 +30,27 @@ const GRID_COLS = "md:grid-cols-[96px_138px_1fr_78px_116px_70px]";
 function Field({ label, value, vcls }: { label: string; value: React.ReactNode; vcls: string }) {
   return <div className="min-w-0"><div className={LABEL_CLS}>{label}</div><div className={`${vcls} break-words`}>{value}</div></div>;
 }
+function StatusSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  // Legacy free-text statuses (e.g. from an xlsx import) stay selectable so they aren't silently lost.
+  const opts: string[] = value && !(STATUSES as readonly string[]).includes(value) ? [value, ...STATUSES] : [...STATUSES];
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={`${INPUT_BASE} font-hanken cursor-pointer`}>
+      {!value && <option value="">— set status</option>}
+      {opts.map((s) => <option key={s} value={s}>{s}</option>)}
+    </select>
+  );
+}
 
 type Category = "council" | "private";
-interface Draft { pcnNumber: string; authority: string; vehicleReg: string; dateOfPcn: string; discountPeriodDays: string; full: string; disc: string; cost: string; driverName: string }
-function emptyDraft(): Draft { return { pcnNumber: "", authority: "", vehicleReg: "", dateOfPcn: "", discountPeriodDays: "", full: "", disc: "", cost: "", driverName: "" }; }
+interface Draft { pcnNumber: string; authority: string; vehicleReg: string; dateOfPcn: string; discountPeriodDays: string; full: string; disc: string; cost: string; driverName: string; status: string }
+function emptyDraft(): Draft { return { pcnNumber: "", authority: "", vehicleReg: "", dateOfPcn: "", discountPeriodDays: "", full: "", disc: "", cost: "", driverName: "", status: DEFAULT_STATUS }; }
 
 interface State {
   view: "register" | "detail" | "capture";
   q: string; cat: "all" | Category; sort: "logged" | "reg" | "authority" | "date"; sortDir: number;
   showDiscounted: boolean; selectedId: string | null; newId: string | null; pcns: PcnView[];
   capStage: "idle" | "extracting" | "draft"; capFileName: string | null; capPreview: string | null; capImageUrl: string | null;
-  capCat: Category; draft: Draft | null; edit: Record<string, string>; saving: boolean;
+  capCat: Category; draft: Draft | null; dupeStatus: string | null; edit: Record<string, string>; saving: boolean;
   error: string | null;
   importStage: "idle" | "parsing" | "confirm" | "resetting";
   importPreview: { fileRows: number; privateCount: number; councilCount: number; currentRows: number } | null;
@@ -52,7 +63,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     view: "register", q: "", cat: "all", sort: "logged", sortDir: -1, showDiscounted: false,
     selectedId: null, newId: null, pcns: initialPcns,
     capStage: "idle", capFileName: null, capPreview: null, capImageUrl: null, capCat: "council",
-    draft: null, edit: {}, saving: false, error: null,
+    draft: null, dupeStatus: null, edit: {}, saving: false, error: null,
     importStage: "idle", importPreview: null, importError: null,
   }));
   const update = useCallback((patch: Partial<State> | ((s: State) => Partial<State>)) =>
@@ -77,7 +88,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const toggleDiscounted = () => update((s) => ({ showDiscounted: !s.showDiscounted }));
 
   /* capture */
-  const openCapture = () => update({ view: "capture", capStage: "idle", draft: null, capFileName: null, capPreview: null, capImageUrl: null });
+  const openCapture = () => update({ view: "capture", capStage: "idle", draft: null, dupeStatus: null, capFileName: null, capPreview: null, capImageUrl: null });
   const capManual = () => update({ view: "capture", capStage: "draft", capCat: "council", capFileName: "manual entry", capPreview: null, capImageUrl: null, draft: emptyDraft() });
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files && e.target.files[0];
@@ -103,16 +114,16 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
             pcnNumber: ex.pcnNumber ?? "", authority: ex.authority ?? "", vehicleReg: ex.vehicleReg ?? "",
             dateOfPcn: ex.dateOfPcn ?? "", discountPeriodDays: ex.discountPeriodDays != null ? String(ex.discountPeriodDays) : "",
             full: ex.fullCost != null ? String(ex.fullCost) : "", disc: ex.discountedCost != null ? String(ex.discountedCost) : "",
-            cost: ex.cost != null ? String(ex.cost) : "", driverName: "",
+            cost: ex.cost != null ? String(ex.cost) : "", driverName: "", status: DEFAULT_STATUS,
           },
         });
       })
       .catch(() => update({ capStage: "draft", draft: emptyDraft() }));
   };
   const capField = (k: keyof Draft) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    update((s) => ({ draft: { ...(s.draft ?? emptyDraft()), [k]: e.target.value } }));
+    update((s) => ({ draft: { ...(s.draft ?? emptyDraft()), [k]: e.target.value }, ...(k === "pcnNumber" ? { dupeStatus: null } : {}) }));
   const setCapCat = (c: Category) => update({ capCat: c });
-  const capReset = () => update({ capStage: "idle", draft: null, capFileName: null, capPreview: null, capImageUrl: null, error: null });
+  const capReset = () => update({ capStage: "idle", draft: null, dupeStatus: null, capFileName: null, capPreview: null, capImageUrl: null, error: null });
   const capSave = async () => {
     const d = state.draft; if (!d || state.saving) return;
     update({ saving: true, error: null });
@@ -125,9 +136,9 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
         costPence: council ? null : pence(d.cost), fullCostPence: council ? pence(d.full) : null,
         discountedCostPence: council ? pence(d.disc) : null,
         dateOfPcn: d.dateOfPcn || null, discountPeriodDays: d.discountPeriodDays ? parseInt(d.discountPeriodDays, 10) : null,
-        driverName: (d.driverName || "").trim() || null, status: null, notes: null, imageUrl: state.capImageUrl,
+        driverName: (d.driverName || "").trim() || null, status: d.status || DEFAULT_STATUS, notes: null, imageUrl: state.capImageUrl,
       });
-      update((s) => ({ pcns: [view, ...s.pcns], view: "register", newId: view.id, saving: false, capStage: "idle", draft: null, capPreview: null, capImageUrl: null, error: null }));
+      update((s) => ({ pcns: [view, ...s.pcns], view: "register", newId: view.id, saving: false, capStage: "idle", draft: null, dupeStatus: null, capPreview: null, capImageUrl: null, error: null }));
       router.refresh();
     } catch { update({ saving: false, error: "Couldn't save — try again." }); }
   };
@@ -210,7 +221,19 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const total = state.pcns.length;
   const rows = registerRows();
   const d = byId(state.selectedId);
-  const dupe = !!state.draft && state.pcns.some((p) => p.pcnNumber.toLowerCase() === state.draft!.pcnNumber.trim().toLowerCase());
+  const dupeOf = (state.draft && state.pcns.find((p) => p.pcnNumber.toLowerCase() === state.draft!.pcnNumber.trim().toLowerCase())) || null;
+  const dupe = !!dupeOf;
+
+  /* scanned ticket already logged → update the existing record's status instead */
+  const dupeSaveStatus = async () => {
+    if (!dupeOf || state.saving) return;
+    update({ saving: true, error: null });
+    try {
+      const view = await updatePcn(dupeOf.id, { status: (state.dupeStatus ?? dupeOf.status) || null });
+      update((s) => ({ pcns: s.pcns.map((x) => (x.id === view.id ? view : x)), view: "register", newId: view.id, saving: false, capStage: "idle", draft: null, dupeStatus: null, capPreview: null, capImageUrl: null, error: null }));
+      router.refresh();
+    } catch { update({ saving: false, error: "Couldn't update — try again." }); }
+  };
 
   return (
     <div className="min-h-screen bg-cream font-hanken text-ink">
@@ -325,7 +348,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
 
                 <div className="mt-[18px] pt-4 border-t border-line-soft grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-[13px]">
                   <div><div className={LABEL_CLS}>DRIVER (name only)</div><input value={state.edit.driverName} onChange={editField("driverName")} placeholder="—" className={INPUT_HANKEN_CLS} /></div>
-                  <div><div className={LABEL_CLS}>STATUS</div><input value={state.edit.status} onChange={editField("status")} placeholder="e.g. Paid, Appeal submitted" className={INPUT_HANKEN_CLS} /></div>
+                  <div><div className={LABEL_CLS}>STATUS</div><StatusSelect value={state.edit.status} onChange={(v) => update((s) => ({ edit: { ...s.edit, status: v } }))} /></div>
                   {d.category === "council" && (
                     <>
                       <div><div className={LABEL_CLS}>ALI PAID?</div><input value={state.edit.aliPaid} onChange={editField("aliPaid")} className={INPUT_MONO_CLS} /></div>
@@ -430,8 +453,20 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                     ) : (
                       <div><div className={LABEL_CLS}>COST OF PCN (£)</div><input value={state.draft.cost} onChange={capField("cost")} placeholder="100" className={INPUT_MONO_CLS} /></div>
                     )}
-                    <div className="md:col-span-2"><div className={LABEL_CLS}>DRIVER · NAME ONLY (optional)</div><input value={state.draft.driverName} onChange={capField("driverName")} placeholder="Add later from the register" className={INPUT_HANKEN_CLS} /></div>
+                    <div><div className={LABEL_CLS}>STATUS</div><StatusSelect value={state.draft.status} onChange={(v) => update((s) => ({ draft: { ...(s.draft ?? emptyDraft()), status: v } }))} /></div>
+                    <div><div className={LABEL_CLS}>DRIVER · NAME ONLY (optional)</div><input value={state.draft.driverName} onChange={capField("driverName")} placeholder="Add later from the register" className={INPUT_HANKEN_CLS} /></div>
                   </div>
+                  {dupeOf && (
+                    <div className="mt-4 border border-[#e7c9c0] bg-[#faf1ee] rounded-[9px] p-3.5">
+                      <div className="font-hanken font-semibold text-xs text-accent mb-1">This PCN is already in the register</div>
+                      <div className="text-[11.5px] text-muted leading-normal mb-2.5">{dupeOf.vehicleReg} · {dupeOf.authority} · logged {fmtDate(dupeOf.dateOfPcn)} · current status: <b>{dupeOf.status || "—"}</b>. Update its status instead of adding a duplicate:</div>
+                      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2.5 items-center">
+                        <StatusSelect value={state.dupeStatus ?? (dupeOf.status || "")} onChange={(v) => update({ dupeStatus: v })} />
+                        <div className={`text-center font-spline font-bold text-[11px] tracking-[0.6px] px-3.5 py-[10px] rounded-lg cursor-pointer bg-accent text-paper shadow-[0_2px_0_rgba(120,40,30,0.35)]${state.saving ? " opacity-60" : ""}`} onClick={dupeSaveStatus}>{state.saving ? "UPDATING…" : "UPDATE STATUS"}</div>
+                        <div className="text-center font-hanken font-semibold text-xs text-faint cursor-pointer" onClick={() => openDetail(dupeOf.id)}>open record</div>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 mt-[18px]">
                     <div className={`flex-1 md:flex-none text-center font-spline font-bold text-xs tracking-[0.6px] px-[18px] py-3 rounded-lg cursor-pointer bg-accent text-paper -rotate-[1deg] shadow-[0_3px_0_rgba(120,40,30,0.35)]${state.saving ? " opacity-60" : ""}`} onClick={capSave}>{state.saving ? "SAVING…" : "SAVE TO REGISTER"}</div>
                     <div className="font-hanken font-semibold text-xs text-faint cursor-pointer" onClick={capReset}>Discard</div>
