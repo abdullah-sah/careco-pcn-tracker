@@ -26,7 +26,7 @@ Extract these fields. Use null when a field is not present. DO NOT extract the d
 export async function extractPcn(base64: string, mediaType: string): Promise<Extracted> {
   const client = new Anthropic(); // reads ANTHROPIC_API_KEY
   const res = await client.messages.parse({
-    model: "claude-haiku-4-5",
+    model: "claude-sonnet-5",
     max_tokens: 1024,
     messages: [
       {
