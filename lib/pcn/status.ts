@@ -2,6 +2,7 @@ export const STATUSES = [
   "Not started",
   "In progress (Ali)",
   "In progress (reassign)",
+  "Appeal rejected",
   "Complete",
 ] as const;
 
