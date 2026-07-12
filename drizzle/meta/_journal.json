@@ -8,6 +8,13 @@
       "when": 1782839813007,
       "tag": "0000_daffy_wong",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783821116591,
+      "tag": "0001_sad_sentinels",
+      "breakpoints": true
     }
   ]
 }
