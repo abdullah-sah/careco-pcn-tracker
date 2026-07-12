@@ -9,6 +9,9 @@ next-env.d.ts
 .vercel
 .env*
 
+# db maintenance backups
+/data/backups
+
 # python (stray venv)
 venv/
 __pycache__/
