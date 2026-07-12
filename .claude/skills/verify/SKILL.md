@@ -10,11 +10,13 @@ Next.js app, Neon Postgres, private Vercel Blob store, shared-password auth.
 ## Launch
 
 ```bash
-PORT=3456 AUTH_SECRET=dev-verify-secret LOGIN_PASSWORD=dev-verify-pass npm run dev
+PORT=3456 AUTH_SECRET=dev-verify-secret LOGIN_PASSWORD=dev-verify-pass LOGIN_PASSWORD_ALAN=dev-alan-pass npm run dev
 ```
 
 Injecting dev-only auth vars works because login compares against `LOGIN_PASSWORD`
-and sessions are HMAC-signed with `AUTH_SECRET` — no user table.
+(admin) / `LOGIN_PASSWORD_ALAN` (alan role) and sessions are HMAC-signed with
+`AUTH_SECRET` — no user table. Role determines UI: alan gets a to-do queue and
+tap-only payment controls; admin gets add/import/export and free editing.
 `.env.local` supplies `DATABASE_URL` (points at the live Neon DB — writes are real).
 
 ## Drive

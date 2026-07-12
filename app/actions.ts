@@ -8,7 +8,8 @@ import { pcn } from "@/db/schema";
 import { getAllPcns } from "@/db/queries";
 import { toView, type PcnView } from "@/lib/pcn/view";
 import type { Category, PcnRow } from "@/lib/pcn/types";
-import { canSendToAli } from "@/lib/pcn/status";
+import { canSendToAli, statusesFor } from "@/lib/pcn/status";
+import { getSessionRole, type Role } from "@/lib/auth";
 import { sendPcnEmail } from "@/lib/email/send-to-ali";
 import { parseWorkbook } from "@/lib/xlsx/import";
 import { reattachImages } from "@/lib/pcn/reattach-images";
@@ -29,26 +30,83 @@ export interface CreatePcnInput {
   imageUrl: string | null;
 }
 
-export type UpdatePcnInput = Partial<
-  Pick<PcnView, "status" | "driverName" | "notes" | "aliPaid" | "moneyRequested" | "driverPaid">
->;
+export type UpdatePcnInput = Partial<{
+  status: string | null;
+  driverName: string | null; // admin only — silently dropped for other roles
+  notes: string | null;
+  aliFeePence: number | null; // 3000 | 4000; null clears the payment
+  moneyRequested: boolean;
+  driverPaid: boolean;
+}>;
+
+async function requireRole(): Promise<Role> {
+  const role = await getSessionRole();
+  if (!role) throw new Error("Not signed in");
+  return role;
+}
+
+async function requireAdmin(): Promise<Role> {
+  const role = await requireRole();
+  if (role !== "admin") throw new Error("Not allowed");
+  return role;
+}
 
 export async function createPcn(input: CreatePcnInput): Promise<PcnView> {
+  const role = await requireAdmin();
   const [row] = await db
     .insert(pcn)
-    .values({ ...input, sortSeq: sql`(select coalesce(max(${pcn.sortSeq}), 0) + 1 from ${pcn})` })
+    .values({ ...input, updatedBy: role, sortSeq: sql`(select coalesce(max(${pcn.sortSeq}), 0) + 1 from ${pcn})` })
     .returning();
   if (!row) throw new Error("PCN not found");
   revalidatePath("/");
   return toView(row);
 }
 
+const ALI_FEES = [3000, 4000]; // £30 sent early, £40 delayed — the only amounts Ali charges
+const today = () => new Date().toISOString().slice(0, 10);
+
 export async function updatePcn(id: string, patch: UpdatePcnInput): Promise<PcnView> {
-  const [row] = await db
-    .update(pcn)
-    .set({ ...patch, updatedAt: new Date() })
-    .where(eq(pcn.id, id))
-    .returning();
+  const role = await requireRole();
+  const [existing] = await db.select().from(pcn).where(eq(pcn.id, id)).limit(1);
+  if (!existing) throw new Error("PCN not found");
+
+  const set: Record<string, unknown> = { updatedAt: new Date(), updatedBy: role };
+
+  if ("status" in patch) {
+    const s = patch.status ?? null;
+    // Allow the category's list, or leaving a legacy value untouched.
+    if (s !== null && s !== existing.status && !statusesFor(existing.category).includes(s))
+      throw new Error("Invalid status");
+    set.status = s;
+  }
+  if ("driverName" in patch && role === "admin") set.driverName = patch.driverName ?? null;
+  if ("notes" in patch) set.notes = patch.notes ?? null;
+
+  // Payment fields only exist for council tickets. Legacy text columns are
+  // mirrored on every write so xlsx export/reset stays coherent.
+  if (existing.category === "council") {
+    if ("aliFeePence" in patch) {
+      const fee = patch.aliFeePence ?? null;
+      if (fee !== null && !ALI_FEES.includes(fee)) throw new Error("Ali's fee is £30 or £40");
+      set.aliFeePence = fee;
+      set.aliPaid = fee === null ? null : String(fee / 100);
+      // Keep the original payment date when the fee is merely corrected later.
+      set.aliPaidAt = fee === null ? null : existing.aliPaidAt ?? today();
+    }
+    if ("moneyRequested" in patch) {
+      const on = patch.moneyRequested === true;
+      set.moneyRequestedAt = on ? existing.moneyRequestedAt ?? today() : null;
+      set.moneyRequested = on ? "Yes" : null;
+    }
+    if ("driverPaid" in patch) {
+      const on = patch.driverPaid === true;
+      set.driverPaidAt = on ? existing.driverPaidAt ?? today() : null;
+      set.driverPaidPence = on ? existing.driverPaidPence ?? existing.discountedCostPence : null;
+      set.driverPaid = on ? "Yes" : null;
+    }
+  }
+
+  const [row] = await db.update(pcn).set(set).where(eq(pcn.id, id)).returning();
   if (!row) throw new Error("PCN not found");
   revalidatePath("/");
   return toView(row);
@@ -58,6 +116,7 @@ export type SendToAliResult = { ok: true } | { ok: false; error: string };
 
 export async function sendToAli(id: string): Promise<SendToAliResult> {
   try {
+    await requireRole();
     const [row] = await db.select().from(pcn).where(eq(pcn.id, id)).limit(1);
     if (!row) return { ok: false, error: "PCN not found." };
     if (!canSendToAli(row.category, row.status))
@@ -113,6 +172,7 @@ function parseError(e: unknown): string {
 export async function previewReset(fd: FormData): Promise<ResetPreview> {
   let rows: PcnRow[];
   try {
+    await requireAdmin();
     rows = await rowsFromUpload(fd);
   } catch (e) {
     return { ok: false, error: parseError(e) };
@@ -136,6 +196,7 @@ export async function previewReset(fd: FormData): Promise<ResetPreview> {
 export async function resetFromXlsx(fd: FormData): Promise<ResetResult> {
   let rows: PcnRow[];
   try {
+    await requireAdmin();
     rows = await rowsFromUpload(fd);
   } catch (e) {
     return { ok: false, error: parseError(e) };

@@ -3,9 +3,11 @@
 import React, { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PcnView } from "@/lib/pcn/view";
-import { createPcn, updatePcn, previewReset, resetFromXlsx, sendToAli } from "@/app/actions";
+import type { Role } from "@/lib/auth";
+import { createPcn, updatePcn, previewReset, resetFromXlsx, sendToAli, type UpdatePcnInput } from "@/app/actions";
+import { logout } from "@/app/login/actions";
 import { poundsToPence } from "@/lib/convert";
-import { STATUSES, DEFAULT_STATUS, canSendToAli } from "@/lib/pcn/status";
+import { statusesFor, isActionable, DEFAULT_STATUS, canSendToAli } from "@/lib/pcn/status";
 
 /* ---------- helpers ---------- */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -28,11 +30,15 @@ const INPUT_HANKEN_CLS = `${INPUT_BASE} font-hanken`;
 const catCls = (c: string) => c === "council" ? "bg-[#e7eef0] text-[#3a5a66]" : "bg-[#f3e3df] text-accent";
 const statusCls = (s: string | null | undefined) => {
   switch (s) {
-    case "Complete": return "bg-[#eaf2ea] text-[#3f7d4e]";
+    case "Complete":
+    case "Appeal won":
+    case "Paid": return "bg-[#eaf2ea] text-[#3f7d4e]";
     case "Appeal rejected": return "bg-[#f3e3df] text-accent";
     case "In progress (Ali)":
-    case "In progress (reassign)": return "bg-[#f6edda] text-[#8a6d2f]";
+    case "In progress (reassign)":
+    case "Message sent": return "bg-[#f6edda] text-[#8a6d2f]";
     case "New correspondence (send to Ali)": return "bg-[#e7eef0] text-[#3a5a66]";
+    case "Canceled": return "bg-[#ece9e4] text-[#8a8478]";
     default: return "bg-[#efeae0] text-[#8a7f6d]"; // Not started / unset / legacy
   }
 };
@@ -40,15 +46,25 @@ const GRID_COLS = "md:grid-cols-[92px_128px_1fr_70px_98px_168px]";
 function Field({ label, value, vcls }: { label: string; value: React.ReactNode; vcls: string }) {
   return <div className="min-w-0"><div className={LABEL_CLS}>{label}</div><div className={`${vcls} break-words`}>{value}</div></div>;
 }
-function StatusSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function StatusSelect({ value, category, onChange }: { value: string; category: string; onChange: (v: string) => void }) {
+  const statuses = statusesFor(category);
   // Legacy free-text statuses (e.g. from an xlsx import) stay selectable so they aren't silently lost.
-  const opts: string[] = value && !(STATUSES as readonly string[]).includes(value) ? [value, ...STATUSES] : [...STATUSES];
+  const opts: string[] = value && !statuses.includes(value) ? [value, ...statuses] : [...statuses];
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} className={`${INPUT_BASE} font-hanken cursor-pointer`}>
       {!value && <option value="">— set status</option>}
       {opts.map((s) => <option key={s} value={s}>{s}</option>)}
     </select>
   );
+}
+
+function ToggleBtn({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) {
+  return (
+    <div className={`text-center font-hanken font-semibold text-[12px] px-3 py-[10px] rounded-[7px] cursor-pointer border select-none ${on ? "bg-ink text-paper border-ink" : "bg-paper text-muted border-line"}`} onClick={onClick}>{label}</div>
+  );
+}
+function StampNote({ date }: { date: string | null }) {
+  return <div className="font-spline font-medium text-[9.5px] text-sand mt-[5px]">{date ? fmtDate(date) : "date stamped on save"}</div>;
 }
 
 /* Claude vision reads at most 2576px on the long edge — resizing client-side keeps
@@ -78,12 +94,20 @@ type Category = "council" | "private";
 interface Draft { pcnNumber: string; authority: string; vehicleReg: string; dateOfPcn: string; discountPeriodDays: string; full: string; disc: string; cost: string; driverName: string; status: string }
 function emptyDraft(): Draft { return { pcnNumber: "", authority: "", vehicleReg: "", dateOfPcn: "", discountPeriodDays: "", full: "", disc: "", cost: "", driverName: "", status: DEFAULT_STATUS }; }
 
+interface Edit {
+  status: string; driverName: string; notes: string;
+  aliFeePence: number | null; moneyRequested: boolean; driverPaid: boolean;
+}
+function emptyEdit(): Edit {
+  return { status: "", driverName: "", notes: "", aliFeePence: null, moneyRequested: false, driverPaid: false };
+}
+
 interface State {
   view: "register" | "detail" | "capture";
-  q: string; cat: "all" | Category; sort: "logged" | "reg" | "authority" | "date"; sortDir: number;
+  q: string; scope: "todo" | "all"; cat: "all" | Category; sort: "logged" | "reg" | "authority" | "date"; sortDir: number;
   selectedId: string | null; newId: string | null; pcns: PcnView[];
   capStage: "idle" | "extracting" | "draft"; capFileName: string | null; capPreview: string | null; capImageUrl: string | null;
-  capCat: Category; draft: Draft | null; dupeStatus: string | null; edit: Record<string, string>; saving: boolean;
+  capCat: Category; draft: Draft | null; dupeStatus: string | null; edit: Edit; saving: boolean;
   sendStage: "idle" | "sending" | "sent";
   error: string | null;
   importStage: "idle" | "parsing" | "confirm" | "resetting";
@@ -91,13 +115,15 @@ interface State {
   importError: string | null;
 }
 
-export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
+export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[]; role: Role }) {
   const router = useRouter();
+  const isAdmin = role === "admin";
   const [state, setState] = useState<State>(() => ({
-    view: "register", q: "", cat: "all", sort: "logged", sortDir: -1,
+    // Alan lands on his to-do queue; admin sees everything by default.
+    view: "register", q: "", scope: isAdmin ? "all" : "todo", cat: "all", sort: "logged", sortDir: -1,
     selectedId: null, newId: null, pcns: initialPcns,
     capStage: "idle", capFileName: null, capPreview: null, capImageUrl: null, capCat: "council",
-    draft: null, dupeStatus: null, edit: {}, saving: false, sendStage: "idle", error: null,
+    draft: null, dupeStatus: null, edit: emptyEdit(), saving: false, sendStage: "idle", error: null,
     importStage: "idle", importPreview: null, importError: null,
   }));
   const update = useCallback((patch: Partial<State> | ((s: State) => Partial<State>)) =>
@@ -111,12 +137,13 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     const p = state.pcns.find((x) => x.id === id)!;
     update({ view: "detail", selectedId: id, error: null, sendStage: "idle", edit: {
       status: p.status ?? "", driverName: p.driverName ?? "", notes: p.notes ?? "",
-      aliPaid: p.aliPaid ?? "", moneyRequested: p.moneyRequested ?? "", driverPaid: p.driverPaid ?? "",
+      aliFeePence: p.aliFeePence, moneyRequested: p.moneyRequestedAt != null, driverPaid: p.driverPaidAt != null,
     } });
   };
 
   /* search / filter / sort */
   const onSearch = (e: React.ChangeEvent<HTMLInputElement>) => update({ q: e.target.value });
+  const setScope = (v: State["scope"]) => update({ scope: v });
   const setCat = (c: State["cat"]) => update({ cat: c });
   const toggleSort = (k: State["sort"]) => update((s) => ({ sort: k, sortDir: s.sort === k ? -s.sortDir : 1 }));
 
@@ -180,15 +207,17 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   };
 
   /* detail edit */
-  const editField = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const editField = (k: "status" | "driverName" | "notes") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     update((s) => ({ edit: { ...s.edit, [k]: e.target.value } }));
+  const editSet = (patch: Partial<Edit>) => update((s) => ({ edit: { ...s.edit, ...patch } }));
   const saveEdit = async () => {
     const id = state.selectedId; if (!id || state.saving) return;
     update({ saving: true, error: null });
     const e = state.edit;
-    const patch: any = { status: e.status || null, driverName: e.driverName || null, notes: e.notes || null };
+    const patch: UpdatePcnInput = { status: e.status || null, notes: e.notes || null };
+    if (isAdmin) patch.driverName = e.driverName || null;
     const p = byId(id);
-    if (p?.category === "council") { patch.aliPaid = e.aliPaid || null; patch.moneyRequested = e.moneyRequested || null; patch.driverPaid = e.driverPaid || null; }
+    if (p?.category === "council") { patch.aliFeePence = e.aliFeePence; patch.moneyRequested = e.moneyRequested; patch.driverPaid = e.driverPaid; }
     try {
       const view = await updatePcn(id, patch);
       update((s) => ({ pcns: s.pcns.map((x) => (x.id === id ? view : x)), saving: false, error: null }));
@@ -250,9 +279,10 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
 
   /* view-models */
   const registerRows = () => {
-    const { q, cat, sort, sortDir } = state;
+    const { q, scope, cat, sort, sortDir } = state;
     const ql = q.trim().toLowerCase();
     const filtered = state.pcns.filter((p) => {
+      if (scope === "todo" && !isActionable(p.status)) return false;
       if (cat !== "all" && p.category !== cat) return false;
       if (!ql) return true;
       return (p.vehicleReg + " " + p.pcnNumber + " " + p.authority + " " + (p.driverName || "")).toLowerCase().includes(ql);
@@ -293,14 +323,29 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3.5">
-            <label className={`inline-flex items-center justify-center w-12 h-12 text-lg md:w-auto md:h-auto md:text-[11px] md:px-[13px] md:py-2 font-spline font-bold tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer${state.importStage === "parsing" ? " opacity-60" : ""}`}>
-            ↥<span className="hidden md:inline">&nbsp;{state.importStage === "parsing" ? "READING…" : "IMPORT XLSX"}</span>
-              <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onImportFile} disabled={state.importStage !== "idle"} className="hidden" />
-            </label>
-            <a href="/api/export" className="inline-flex items-center justify-center w-12 h-12 text-lg md:w-auto md:h-auto md:text-[11px] md:px-[13px] md:py-2 no-underline font-spline font-bold tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer">↧<span className="hidden md:inline">&nbsp;EXPORT XLSX</span></a>
+            {isAdmin && (
+              <>
+                <label className={`inline-flex items-center justify-center w-12 h-12 text-lg md:w-auto md:h-auto md:text-[11px] md:px-[13px] md:py-2 font-spline font-bold tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer${state.importStage === "parsing" ? " opacity-60" : ""}`}>
+                ↥<span className="hidden md:inline">&nbsp;{state.importStage === "parsing" ? "READING…" : "IMPORT XLSX"}</span>
+                  <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onImportFile} disabled={state.importStage !== "idle"} className="hidden" />
+                </label>
+                <a href="/api/export" className="inline-flex items-center justify-center w-12 h-12 text-lg md:w-auto md:h-auto md:text-[11px] md:px-[13px] md:py-2 no-underline font-spline font-bold tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer">↧<span className="hidden md:inline">&nbsp;EXPORT XLSX</span></a>
+              </>
+            )}
             <div className="hidden md:block text-right font-spline font-medium text-[10px] text-faint leading-normal">
               <div>UK GDPR · name-only</div>
+              <div>signed in as {isAdmin ? "Abdullah" : "Alan"}</div>
             </div>
+            <form action={logout} className="contents">
+              <button type="submit" title="Log out" aria-label="Log out" className="inline-flex items-center justify-center w-12 h-12 md:w-auto md:h-auto md:text-[11px] md:px-[13px] md:py-2 font-spline font-bold tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="md:w-[14px] md:h-[14px]">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span className="hidden md:inline">&nbsp;LOG OUT</span>
+              </button>
+            </form>
           </div>
         </div>
       </header>
@@ -322,11 +367,18 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                   <span className="font-spline font-semibold text-xs text-sand">⌕</span>
                   <input value={state.q} onChange={onSearch} placeholder="Search reg, PCN, authority, driver" className="border-none outline-none bg-transparent font-hanken font-medium text-[16px] md:text-xs text-ink w-full md:w-[220px] py-[9px] px-[2px]" />
                 </div>
-                <div className="flex shrink-0 items-center gap-2 font-spline font-bold text-[11px] tracking-[0.5px] text-paper bg-accent px-[15px] py-[9px] rounded-[9px] cursor-pointer -rotate-[1deg] shadow-[0_2px_0_rgba(120,40,30,0.35)] whitespace-nowrap" onClick={openCapture}>＋ ADD PCN</div>
+                {isAdmin && <div className="flex shrink-0 items-center gap-2 font-spline font-bold text-[11px] tracking-[0.5px] text-paper bg-accent px-[15px] py-[9px] rounded-[9px] cursor-pointer -rotate-[1deg] shadow-[0_2px_0_rgba(120,40,30,0.35)] whitespace-nowrap" onClick={openCapture}>＋ ADD PCN</div>}
               </div>
             </div>
 
-            <div className="flex items-center gap-2 px-4 md:px-6 pb-[14px]">
+            <div className="flex flex-wrap items-center gap-2 px-4 md:px-6 pb-[14px]">
+              {(["todo", "all"] as const).map((key) => {
+                const n = key === "todo" ? state.pcns.filter((p) => isActionable(p.status)).length : state.pcns.length;
+                return (
+                  <div key={key} className={`font-hanken font-semibold text-[11px] px-[13px] py-[7px] rounded-[7px] cursor-pointer border ${state.scope === key ? "bg-accent text-paper border-accent" : "bg-paper text-muted border-line"}`} onClick={() => setScope(key)}>{key === "todo" ? `To do · ${n}` : `All tickets · ${n}`}</div>
+                );
+              })}
+              <div className="h-5 w-px bg-line mx-1" />
               {(["all", "council", "private"] as const).map((key) => (
                 <div key={key} className={`font-hanken font-semibold text-[11px] px-[13px] py-[7px] rounded-[7px] cursor-pointer border ${state.cat === key ? "bg-ink text-paper border-ink" : "bg-paper text-muted border-line"}`} onClick={() => setCat(key)}>{key === "all" ? "All" : key === "council" ? "Council" : "Private"}</div>
               ))}
@@ -388,13 +440,37 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                 </div>
 
                 <div className="mt-[18px] pt-4 border-t border-line-soft grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-[13px]">
-                  <div><div className={LABEL_CLS}>DRIVER (name only)</div><input value={state.edit.driverName} onChange={editField("driverName")} placeholder="—" className={INPUT_HANKEN_CLS} /></div>
-                  <div><div className={LABEL_CLS}>STATUS</div><StatusSelect value={state.edit.status} onChange={(v) => update((s) => ({ edit: { ...s.edit, status: v } }))} /></div>
+                  {isAdmin ? (
+                    <div><div className={LABEL_CLS}>DRIVER (name only)</div><input value={state.edit.driverName} onChange={editField("driverName")} placeholder="—" className={INPUT_HANKEN_CLS} /></div>
+                  ) : (
+                    <Field label="DRIVER (name only)" value={d.driverName || "—"} vcls="font-medium text-sm" />
+                  )}
+                  <div><div className={LABEL_CLS}>STATUS</div><StatusSelect value={state.edit.status} category={d.category} onChange={(v) => update((s) => ({ edit: { ...s.edit, status: v } }))} /></div>
                   {d.category === "council" && (
                     <>
-                      <div><div className={LABEL_CLS}>ALI PAID?</div><input value={state.edit.aliPaid} onChange={editField("aliPaid")} className={INPUT_MONO_CLS} /></div>
-                      <div><div className={LABEL_CLS}>MONEY REQUESTED?</div><input value={state.edit.moneyRequested} onChange={editField("moneyRequested")} className={INPUT_MONO_CLS} /></div>
-                      <div><div className={LABEL_CLS}>DRIVER PAID?</div><input value={state.edit.driverPaid} onChange={editField("driverPaid")} className={INPUT_MONO_CLS} /></div>
+                      <div>
+                        <div className={LABEL_CLS}>ALI PAID</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {([3000, 4000] as const).map((fee) => (
+                            <ToggleBtn key={fee} on={state.edit.aliFeePence === fee} label={fee === 3000 ? "£30" : "£40"}
+                              onClick={() => editSet({ aliFeePence: state.edit.aliFeePence === fee ? null : fee })} />
+                          ))}
+                        </div>
+                        {state.edit.aliFeePence != null && <StampNote date={d.aliPaidAt} />}
+                      </div>
+                      <div>
+                        <div className={LABEL_CLS}>MONEY REQUESTED FROM DRIVER</div>
+                        <ToggleBtn on={state.edit.moneyRequested} label={state.edit.moneyRequested ? "✓ Requested" : "Mark requested"}
+                          onClick={() => editSet({ moneyRequested: !state.edit.moneyRequested })} />
+                        {state.edit.moneyRequested && <StampNote date={d.moneyRequestedAt} />}
+                      </div>
+                      <div>
+                        <div className={LABEL_CLS}>DRIVER PAID</div>
+                        <ToggleBtn on={state.edit.driverPaid}
+                          label={state.edit.driverPaid ? `✓ Paid ${gbp(d.driverPaidPence ?? d.discountedCostPence)}` : `Mark paid${d.discountedCostPence != null ? " " + gbp(d.discountedCostPence) : ""}`}
+                          onClick={() => editSet({ driverPaid: !state.edit.driverPaid })} />
+                        {state.edit.driverPaid && <StampNote date={d.driverPaidAt} />}
+                      </div>
                     </>
                   )}
                   <div className="md:col-span-2"><div className={LABEL_CLS}>NOTES</div><textarea value={state.edit.notes} onChange={editField("notes")} rows={2} className={INPUT_HANKEN_CLS} /></div>
@@ -428,7 +504,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
         )}
 
         {/* CAPTURE */}
-        {state.view === "capture" && (
+        {state.view === "capture" && isAdmin && (
           <div className="px-4 pt-5 pb-7 md:px-6 min-h-[460px]">
             <div className="flex items-center gap-3.5 mb-1.5">
               <div className="font-spline font-semibold text-xs text-faint cursor-pointer" onClick={goRegister}>← register</div>
@@ -501,7 +577,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                     ) : (
                       <div><div className={LABEL_CLS}>COST OF PCN (£)</div><input value={state.draft.cost} onChange={capField("cost")} placeholder="100" className={INPUT_MONO_CLS} /></div>
                     )}
-                    <div><div className={LABEL_CLS}>STATUS</div><StatusSelect value={state.draft.status} onChange={(v) => update((s) => ({ draft: { ...(s.draft ?? emptyDraft()), status: v } }))} /></div>
+                    <div><div className={LABEL_CLS}>STATUS</div><StatusSelect value={state.draft.status} category={state.capCat} onChange={(v) => update((s) => ({ draft: { ...(s.draft ?? emptyDraft()), status: v } }))} /></div>
                     <div><div className={LABEL_CLS}>DRIVER · NAME ONLY (optional)</div><input value={state.draft.driverName} onChange={capField("driverName")} placeholder="Add later from the register" className={INPUT_HANKEN_CLS} /></div>
                   </div>
                   {dupeOf && (
@@ -509,7 +585,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                       <div className="font-hanken font-semibold text-xs text-accent mb-1">This PCN is already in the register</div>
                       <div className="text-[11.5px] text-muted leading-normal mb-2.5">{dupeOf.vehicleReg} · {dupeOf.authority} · logged {fmtDate(dupeOf.dateOfPcn)} · current status: <b>{dupeOf.status || "—"}</b>. Update its status instead of adding a duplicate:</div>
                       <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2.5 items-center">
-                        <StatusSelect value={state.dupeStatus ?? (dupeOf.status || "")} onChange={(v) => update({ dupeStatus: v })} />
+                        <StatusSelect value={state.dupeStatus ?? (dupeOf.status || "")} category={dupeOf.category} onChange={(v) => update({ dupeStatus: v })} />
                         <div className={`text-center font-spline font-bold text-[11px] tracking-[0.6px] px-3.5 py-[10px] rounded-lg cursor-pointer bg-accent text-paper shadow-[0_2px_0_rgba(120,40,30,0.35)]${state.saving ? " opacity-60" : ""}`} onClick={dupeSaveStatus}>{state.saving ? "UPDATING…" : "UPDATE STATUS"}</div>
                         <div className="text-center font-hanken font-semibold text-xs text-faint cursor-pointer" onClick={() => openDetail(dupeOf.id)}>open record</div>
                       </div>
@@ -531,7 +607,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
           </div>
         )}
 
-        {(state.importStage === "confirm" || state.importStage === "resetting") && state.importPreview && (
+        {isAdmin && (state.importStage === "confirm" || state.importStage === "resetting") && state.importPreview && (
           <div className="fixed inset-0 bg-ink/45 flex items-center justify-center z-50 p-4">
             <div className="bg-paper border border-line rounded-[13px] px-6 py-[22px] w-full max-w-[440px] max-h-[85vh] overflow-auto shadow-[0_12px_40px_rgba(33,29,24,0.25)]">
               <div className="font-spectral font-semibold text-base mb-2.5">Reset register from file?</div>
