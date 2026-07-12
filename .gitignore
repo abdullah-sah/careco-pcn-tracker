@@ -13,3 +13,4 @@ next-env.d.ts
 venv/
 __pycache__/
 *.pyc
+graphify-out/
