@@ -3,9 +3,9 @@
 import React, { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PcnView } from "@/lib/pcn/view";
-import { createPcn, updatePcn, previewReset, resetFromXlsx } from "@/app/actions";
+import { createPcn, updatePcn, previewReset, resetFromXlsx, sendToAli } from "@/app/actions";
 import { poundsToPence } from "@/lib/convert";
-import { STATUSES, DEFAULT_STATUS } from "@/lib/pcn/status";
+import { STATUSES, DEFAULT_STATUS, canSendToAli } from "@/lib/pcn/status";
 
 /* ---------- helpers ---------- */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -26,7 +26,17 @@ const INPUT_BASE = "w-full bg-field border border-line rounded-[7px] px-[11px] p
 const INPUT_MONO_CLS = `${INPUT_BASE} font-spline`;
 const INPUT_HANKEN_CLS = `${INPUT_BASE} font-hanken`;
 const catCls = (c: string) => c === "council" ? "bg-[#e7eef0] text-[#3a5a66]" : "bg-[#f3e3df] text-accent";
-const GRID_COLS = "md:grid-cols-[96px_138px_1fr_78px_116px_70px]";
+const statusCls = (s: string | null | undefined) => {
+  switch (s) {
+    case "Complete": return "bg-[#eaf2ea] text-[#3f7d4e]";
+    case "Appeal rejected": return "bg-[#f3e3df] text-accent";
+    case "In progress (Ali)":
+    case "In progress (reassign)": return "bg-[#f6edda] text-[#8a6d2f]";
+    case "New correspondence (send to Ali)": return "bg-[#e7eef0] text-[#3a5a66]";
+    default: return "bg-[#efeae0] text-[#8a7f6d]"; // Not started / unset / legacy
+  }
+};
+const GRID_COLS = "md:grid-cols-[92px_128px_1fr_70px_98px_168px]";
 function Field({ label, value, vcls }: { label: string; value: React.ReactNode; vcls: string }) {
   return <div className="min-w-0"><div className={LABEL_CLS}>{label}</div><div className={`${vcls} break-words`}>{value}</div></div>;
 }
@@ -71,9 +81,10 @@ function emptyDraft(): Draft { return { pcnNumber: "", authority: "", vehicleReg
 interface State {
   view: "register" | "detail" | "capture";
   q: string; cat: "all" | Category; sort: "logged" | "reg" | "authority" | "date"; sortDir: number;
-  showDiscounted: boolean; selectedId: string | null; newId: string | null; pcns: PcnView[];
+  selectedId: string | null; newId: string | null; pcns: PcnView[];
   capStage: "idle" | "extracting" | "draft"; capFileName: string | null; capPreview: string | null; capImageUrl: string | null;
   capCat: Category; draft: Draft | null; dupeStatus: string | null; edit: Record<string, string>; saving: boolean;
+  sendStage: "idle" | "sending" | "sent";
   error: string | null;
   importStage: "idle" | "parsing" | "confirm" | "resetting";
   importPreview: { fileRows: number; privateCount: number; councilCount: number; currentRows: number } | null;
@@ -83,10 +94,10 @@ interface State {
 export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const router = useRouter();
   const [state, setState] = useState<State>(() => ({
-    view: "register", q: "", cat: "all", sort: "logged", sortDir: -1, showDiscounted: false,
+    view: "register", q: "", cat: "all", sort: "logged", sortDir: -1,
     selectedId: null, newId: null, pcns: initialPcns,
     capStage: "idle", capFileName: null, capPreview: null, capImageUrl: null, capCat: "council",
-    draft: null, dupeStatus: null, edit: {}, saving: false, error: null,
+    draft: null, dupeStatus: null, edit: {}, saving: false, sendStage: "idle", error: null,
     importStage: "idle", importPreview: null, importError: null,
   }));
   const update = useCallback((patch: Partial<State> | ((s: State) => Partial<State>)) =>
@@ -98,7 +109,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const goRegister = () => update({ view: "register", error: null });
   const openDetail = (id: string) => {
     const p = state.pcns.find((x) => x.id === id)!;
-    update({ view: "detail", selectedId: id, error: null, edit: {
+    update({ view: "detail", selectedId: id, error: null, sendStage: "idle", edit: {
       status: p.status ?? "", driverName: p.driverName ?? "", notes: p.notes ?? "",
       aliPaid: p.aliPaid ?? "", moneyRequested: p.moneyRequested ?? "", driverPaid: p.driverPaid ?? "",
     } });
@@ -108,7 +119,6 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   const onSearch = (e: React.ChangeEvent<HTMLInputElement>) => update({ q: e.target.value });
   const setCat = (c: State["cat"]) => update({ cat: c });
   const toggleSort = (k: State["sort"]) => update((s) => ({ sort: k, sortDir: s.sort === k ? -s.sortDir : 1 }));
-  const toggleDiscounted = () => update((s) => ({ showDiscounted: !s.showDiscounted }));
 
   /* capture */
   const openCapture = () => update({ view: "capture", capStage: "idle", draft: null, dupeStatus: null, capFileName: null, capPreview: null, capImageUrl: null });
@@ -186,6 +196,17 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
     } catch { update({ saving: false, error: "Couldn't save — try again." }); }
   };
 
+  const onSendToAli = async () => {
+    const id = state.selectedId;
+    if (!id || state.sendStage !== "idle") return;
+    update({ sendStage: "sending", error: null });
+    try {
+      const res = await sendToAli(id);
+      if (res.ok) update({ sendStage: "sent" });
+      else update({ sendStage: "idle", error: res.error });
+    } catch { update({ sendStage: "idle", error: "Couldn't send — try again." }); }
+  };
+
   /* import / reset from xlsx */
   const importFileRef = useRef<File | null>(null);
   const toFd = (f: File) => { const fd = new FormData(); fd.append("file", f); return fd; };
@@ -228,8 +249,6 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
   };
 
   /* view-models */
-  const rowCost = (p: PcnView) => p.category === "private" ? gbp(p.costPence) : gbp(state.showDiscounted ? p.discountedCostPence : p.fullCostPence);
-
   const registerRows = () => {
     const { q, cat, sort, sortDir } = state;
     const ql = q.trim().toLowerCase();
@@ -313,10 +332,6 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
               ))}
             </div>
 
-            <div className="flex justify-end px-4 pb-2 md:hidden">
-              <div className="font-spline font-medium text-[9px] tracking-[1px] text-sand bg-paper border border-line rounded-md px-2.5 py-1.5 cursor-pointer" onClick={toggleDiscounted} title="Toggle full / discounted cost (council)">{state.showDiscounted ? "DISCOUNTED" : "FULL COST"} ⇄</div>
-            </div>
-
             <div className="px-4 pb-6 md:px-6">
               <div className={`hidden md:grid ${GRID_COLS} gap-3 font-spline font-medium text-[9px] tracking-[1px] text-sand px-3 pb-[9px] border-b-[1.5px] border-ink`}>
                 <span className="cursor-pointer" onClick={() => toggleSort("reg")}>VEHICLE {mark("reg")}</span>
@@ -324,7 +339,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                 <span className="cursor-pointer" onClick={() => toggleSort("authority")}>AUTHORITY · DRIVER {mark("authority")}</span>
                 <span>CATEGORY</span>
                 <span className="cursor-pointer" onClick={() => toggleSort("date")}>DATE OF PCN {mark("date")}</span>
-                <span className="text-right cursor-pointer" onClick={toggleDiscounted} title="Toggle full / discounted cost (council)">{state.showDiscounted ? "DISCOUNTED" : "FULL COST"}</span>
+                <span>STATUS</span>
               </div>
 
               {rows.map((p) => (
@@ -336,7 +351,7 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                   <span className="order-5 md:order-none col-span-2 md:col-span-1 truncate font-medium text-[12.5px]">{p.authority} <span className="text-[#bcb3a0]">·</span> <span className="text-faint font-normal">{p.driverName || "— unassigned"}</span></span>
                   <span className="order-4 md:order-none justify-self-end md:justify-self-auto"><span className={`font-spline font-semibold text-[9px] tracking-[0.5px] px-2 py-[3px] rounded ${catCls(p.category)}`}>{p.category}</span></span>
                   <span className="order-6 md:order-none col-span-2 md:col-span-1 font-spline font-medium text-[11.5px] text-muted">{fmtDate(p.dateOfPcn)}</span>
-                  <span className="order-2 md:order-none text-right font-spline font-semibold text-[12.5px]">{rowCost(p)}</span>
+                  <span className="order-2 md:order-none justify-self-end md:justify-self-start"><span className={`inline-block font-spline font-semibold text-[9px] tracking-[0.3px] leading-[1.35] px-2 py-[3px] rounded ${statusCls(p.status)}`}>{p.status || "— not set"}</span></span>
                 </div>
               ))}
               {rows.length === 0 && <div className="text-center py-10 text-sand text-[13px]">No PCNs match — clear the search or add a PCN.</div>}
@@ -385,8 +400,15 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
                   <div className="md:col-span-2"><div className={LABEL_CLS}>NOTES</div><textarea value={state.edit.notes} onChange={editField("notes")} rows={2} className={INPUT_HANKEN_CLS} /></div>
                 </div>
 
-                <div className="flex items-center gap-3 mt-4">
+                <div className="flex flex-wrap items-center gap-3 mt-4">
                   <div className={`font-spline font-bold text-xs tracking-[0.6px] px-4 py-[11px] rounded-lg cursor-pointer bg-accent text-paper shadow-[0_3px_0_rgba(120,40,30,0.35)]${state.saving ? " opacity-60" : ""}`} onClick={saveEdit}>{state.saving ? "SAVING…" : "SAVE CHANGES"}</div>
+                  {canSendToAli(d.category, d.status) && d.hasImage && (
+                    state.sendStage === "sent" ? (
+                      <div className="font-hanken font-semibold text-xs text-[#3f7d4e]">Sent to Ali ✓</div>
+                    ) : (
+                      <div className={`font-spline font-bold text-xs tracking-[0.6px] px-4 py-[10px] rounded-lg cursor-pointer bg-paper text-accent border-[1.5px] border-accent${state.sendStage === "sending" ? " opacity-60" : ""}`} onClick={onSendToAli}>{state.sendStage === "sending" ? "SENDING…" : "✉ SEND TO ALI"}</div>
+                    )
+                  )}
                 </div>
                 {state.error && <div className="text-accent font-hanken font-medium text-[11px] mt-2">{state.error}</div>}
               </div>

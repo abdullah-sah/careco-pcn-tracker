@@ -2,11 +2,14 @@
 
 import { eq, isNotNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { get } from "@vercel/blob";
 import { db } from "@/db";
 import { pcn } from "@/db/schema";
 import { getAllPcns } from "@/db/queries";
 import { toView, type PcnView } from "@/lib/pcn/view";
 import type { Category, PcnRow } from "@/lib/pcn/types";
+import { canSendToAli } from "@/lib/pcn/status";
+import { sendPcnEmail } from "@/lib/email/send-to-ali";
 import { parseWorkbook } from "@/lib/xlsx/import";
 import { reattachImages } from "@/lib/pcn/reattach-images";
 
@@ -49,6 +52,42 @@ export async function updatePcn(id: string, patch: UpdatePcnInput): Promise<PcnV
   if (!row) throw new Error("PCN not found");
   revalidatePath("/");
   return toView(row);
+}
+
+export type SendToAliResult = { ok: true } | { ok: false; error: string };
+
+export async function sendToAli(id: string): Promise<SendToAliResult> {
+  try {
+    const [row] = await db.select().from(pcn).where(eq(pcn.id, id)).limit(1);
+    if (!row) return { ok: false, error: "PCN not found." };
+    if (!canSendToAli(row.category, row.status))
+      return { ok: false, error: "Only new or new-correspondence council PCNs can be sent to Ali." };
+    if (!row.imageUrl) return { ok: false, error: "No PCN image on file — add one first." };
+    let attachment: { base64: string; contentType: string };
+    try {
+      const res = await get(row.imageUrl, { access: "private", token: process.env.BLOB_READ_WRITE_TOKEN });
+      if (!res || res.statusCode !== 200) throw new Error(`blob fetch failed (${res?.statusCode})`);
+      const buf = Buffer.from(await new Response(res.stream).arrayBuffer());
+      attachment = {
+        base64: buf.toString("base64"),
+        contentType: res.blob.contentType ?? res.headers.get("content-type") ?? "image/jpeg",
+      };
+    } catch (e) {
+      console.error("sendToAli image fetch failed:", e);
+      return { ok: false, error: "Couldn't load the PCN image — try again." };
+    }
+    try {
+      await sendPcnEmail(row, attachment);
+    } catch (e) {
+      console.error("sendToAli email failed:", e);
+      // sendPcnEmail throws user-friendly messages.
+      return { ok: false, error: e instanceof Error ? e.message : "Send failed — try again." };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error("sendToAli failed:", e);
+    return { ok: false, error: "Send failed — try again." };
+  }
 }
 
 const MAX_XLSX_BYTES = 5 * 1024 * 1024;
