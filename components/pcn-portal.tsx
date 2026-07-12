@@ -274,11 +274,11 @@ export default function PcnPortal({ initialPcns }: { initialPcns: PcnView[] }) {
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3.5">
-            <label className={`inline-flex items-center justify-center w-10 h-10 md:w-auto md:h-auto md:px-[13px] md:py-2 font-spline font-bold text-[11px] tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer${state.importStage === "parsing" ? " opacity-60" : ""}`}>
+            <label className={`inline-flex items-center justify-center w-12 h-12 text-lg md:w-auto md:h-auto md:text-[11px] md:px-[13px] md:py-2 font-spline font-bold tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer${state.importStage === "parsing" ? " opacity-60" : ""}`}>
             ↥<span className="hidden md:inline">&nbsp;{state.importStage === "parsing" ? "READING…" : "IMPORT XLSX"}</span>
               <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onImportFile} disabled={state.importStage !== "idle"} className="hidden" />
             </label>
-            <a href="/api/export" className="inline-flex items-center justify-center w-10 h-10 md:w-auto md:h-auto md:px-[13px] md:py-2 no-underline font-spline font-bold text-[11px] tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer">↧<span className="hidden md:inline">&nbsp;EXPORT XLSX</span></a>
+            <a href="/api/export" className="inline-flex items-center justify-center w-12 h-12 text-lg md:w-auto md:h-auto md:text-[11px] md:px-[13px] md:py-2 no-underline font-spline font-bold tracking-[0.5px] text-muted bg-paper border-[1.5px] border-line rounded-[9px] cursor-pointer">↧<span className="hidden md:inline">&nbsp;EXPORT XLSX</span></a>
             <div className="hidden md:block text-right font-spline font-medium text-[10px] text-faint leading-normal">
               <div>UK GDPR · name-only</div>
             </div>
