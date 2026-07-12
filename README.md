@@ -14,8 +14,8 @@ Password login, one password per role:
 
 ## Features
 
-- **Register** — searchable/sortable list, filtered by scope (To do / All) and
-  category (council / private). Closed statuses (Complete, Appeal won, Paid,
+- **Register** — searchable/sortable list, filtered by scope (To do / All / Money)
+  and category (council / private). Closed statuses (Complete, Appeal won, Paid,
   Canceled) drop off the to-do queue.
 - **Add a letter** (admin) — photo/upload/manual → fields extracted from the image
   via Claude vision (downscaled client-side first) → check & correct → save.
@@ -27,6 +27,10 @@ Password login, one password per role:
 - **Payments** (council only) — three date-stamped toggles: Ali paid (£30 early /
   £40 delayed, DB-enforced), money requested from driver, driver paid
   (defaults to discounted cost).
+- **Money** tab — read-only view derived from the register: recovered from drivers,
+  saved by the system (£80 per resolved council ticket), total profit (council £80 −
+  Ali's fee / private £60 per cleared ticket), and owed by drivers (ageing buckets +
+  top debtors). All-time and this-month figures. Visible to both roles.
 - **Export / reset** (admin) — export register as xlsx; wipe-and-replace from an
   uploaded xlsx with preview/confirm, re-attaching stored images by PCN number.
 

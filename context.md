@@ -30,6 +30,7 @@ A searchable, sortable list of every ticket, filterable by category (all / counc
 
 - **To do** — tickets whose status still needs action (Alan's default view).
 - **All tickets** — the full register.
+- **Money** — a read-only financial view (see below).
 
 Each ticket opens into a detail view showing the stored record and the original letter image.
 
@@ -37,9 +38,9 @@ Each ticket opens into a detail view showing the stored record and the original 
 Each category has its own status list:
 
 - **Council:** Not started → In progress (Ali) / In progress (reassign) → New correspondence (send to Ali) → Appeal rejected / Appeal won → Complete.
-- **Private:** Not started → Message sent → Paid / Cancelled.
+- **Private:** Not started → Message sent → Paid / Canceled.
 
-Closed statuses (Complete, Appeal won, Paid, Cancelled) drop off the to-do queue; everything else stays on it. Legacy free-text statuses from old spreadsheet imports remain visible and selectable so they aren't silently lost.
+Closed statuses (Complete, Appeal won, Paid, Canceled) drop off the to-do queue; everything else stays on it. Legacy free-text statuses from old spreadsheet imports remain visible and selectable so they aren't silently lost.
 
 ### Send a ticket to Ali
 For council tickets that are new or have fresh correspondence, one button emails Ali the ticket's details plus the letter image as an attachment. The driver's name is deliberately excluded from the email.
@@ -50,6 +51,14 @@ Three tap-to-toggle checkpoints per ticket, each stamped with the date it was fi
 1. **Ali paid** — his £30 or £40 fee (only those two amounts are accepted; the date of first payment is preserved if the amount is later corrected).
 2. **Money requested** from the driver.
 3. **Driver paid** — defaults to the discounted ticket amount.
+
+### See the money
+A read-only **Money** view, derived entirely from the register (no separate bookkeeping), visible to both roles. Four figures, each with an all-time and a this-month total:
+
+- **Recovered from drivers** — total the drivers have actually paid back.
+- **Saved by this system** — £80 per resolved council ticket (every ticket arrives in the owner's name, so without the register each is an £80 cost to the business).
+- **Total profit** — council (£80 recovered − Ali's fee) and private (flat £60 per cleared ticket) kept as separate streams.
+- **Owed by drivers** — outstanding where money was requested but the driver hasn't paid, broken into ageing buckets (0–30 / 31–60 / 60+ days) with the top debtors listed. Undated legacy requests count as the oldest.
 
 ### Import / export (admin only)
 - **Export** the whole register as a spreadsheet (matches the original spreadsheet's shape).
