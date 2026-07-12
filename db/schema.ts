@@ -26,6 +26,8 @@ export const pcn = pgTable("pcn", {
   moneyRequestedAt: date("money_requested_at"),
   driverPaidPence: integer("driver_paid_pence"),
   driverPaidAt: date("driver_paid_at"),
+  // Stamped when status first becomes "Appeal won"; used for monthly money attribution.
+  appealWonAt: date("appeal_won_at"),
   status: text("status"),
   notes: text("notes"),
   imageUrl: text("image_url"),

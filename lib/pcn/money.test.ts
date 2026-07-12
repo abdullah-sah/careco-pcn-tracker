@@ -13,6 +13,7 @@ function pcn(over: Partial<MoneyPcn> = {}): MoneyPcn {
     aliPaid: null, aliFeePence: null, aliPaidAt: null,
     moneyRequested: null, moneyRequestedAt: null,
     driverPaid: null, driverPaidPence: null, driverPaidAt: null,
+    appealWonAt: null,
     ...over,
   };
 }
@@ -48,6 +49,11 @@ describe("isCleared", () => {
     expect(isCleared(pcn({ driverPaid: "Yes", aliPaid: "40" }))).toBe(true);
     expect(isCleared(pcn({ driverPaid: "Yes" }))).toBe(false);
     expect(isCleared(pcn({ aliFeePence: 3000 }))).toBe(false);
+  });
+
+  it("council clears on a won appeal regardless of payment checkpoints", () => {
+    expect(isCleared(pcn({ status: "Appeal won" }))).toBe(true);
+    expect(isCleared(pcn({ status: "Appeal rejected" }))).toBe(false);
   });
 
   it("private clears via its Paid status (no payment checkpoints exist)", () => {
@@ -105,6 +111,17 @@ describe("computeMoney", () => {
     ], NOW);
     expect(m.profit.council).toEqual({ allPence: 5000 + 4000, allCount: 2, monthPence: 5000, monthCount: 1 });
     expect(m.profit.private).toEqual({ allPence: 6000, allCount: 1, monthPence: 0, monthCount: 0 });
+  });
+
+  it("counts a won appeal as saved and profit but never recovered", () => {
+    const m = computeMoney([
+      pcn({ status: "Appeal won", appealWonAt: "2026-07-05" }), // this month, no Ali fee
+      pcn({ status: "Appeal won", appealWonAt: "2026-06-10", aliFeePence: 3000 }), // last month, fee paid pre-win
+      pcn({ status: "Appeal won" }), // legacy: no stamp → all-time only
+    ], NOW);
+    expect(m.recovered).toEqual({ allPence: 0, allCount: 0, monthPence: 0, monthCount: 0 });
+    expect(m.saved).toEqual({ allPence: 24000, allCount: 3, monthPence: 8000, monthCount: 1 });
+    expect(m.profit.council).toEqual({ allPence: 8000 + 5000 + 8000, allCount: 3, monthPence: 8000, monthCount: 1 });
   });
 
   it("builds the owed totals, ageing buckets and top debtors", () => {

@@ -23,14 +23,6 @@ export function statusesFor(category: string): readonly string[] {
   return category === "council" ? COUNCIL_STATUSES : PRIVATE_STATUSES;
 }
 
-// Nothing left to do on these; everything else with a status set needs action.
-// Unset/null status means legacy-untriaged — kept out of the actionable queue.
-const CLOSED_STATUSES: readonly string[] = ["Complete", "Appeal won", "Paid", "Canceled"];
-
-export function isActionable(status: string | null): boolean {
-  return status != null && status !== "" && !CLOSED_STATUSES.includes(status);
-}
-
 // Council tickets that are new or have fresh correspondence can be emailed to Ali.
 export const SEND_TO_ALI_STATUSES: readonly string[] = [
   "Not started",

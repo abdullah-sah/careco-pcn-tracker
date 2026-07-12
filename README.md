@@ -12,23 +12,34 @@ Password login, one password per role:
 - **alan** — simplified tap-only view: lands on the **To do** queue, updates statuses,
   notes and payment toggles, sends PCNs to Ali. Restrictions enforced server-side.
 
+The **To do** queue is ball-in-Alan's-court only (`lib/pcn/queue.ts`): tickets are
+grouped by the action they need (Send to Ali / Contact operator / Money / Decide next
+step), with collapsed **Waiting** (parked with Ali / council / operator) and **Done**
+sections below. Both roles see the same queue.
+
 ## Features
 
 - **Register** — searchable/sortable list, filtered by scope (To do / All / Money)
-  and category (council / private). Closed statuses (Complete, Appeal won, Paid,
-  Canceled) drop off the to-do queue.
+  and category (council / private). To-do is an action-grouped queue; tickets parked
+  with someone else fall into Waiting, resolved ones into Done.
 - **Add a letter** (admin) — photo/upload/manual → fields extracted from the image
   via Claude vision (downscaled client-side first) → check & correct → save.
   PCN-number dedupe check. Driver name is never read from the image (UK GDPR);
   admin types it manually. Image stored in a **private** Blob store.
 - **Detail** — stored record + letter image, per-category status lists, notes.
+  Every field saves instantly (no Save button): toggles/status/payments on tap,
+  notes and driver name debounced (~800 ms); "Saving… / Saved ✓" indicator, failed
+  saves revert the field.
 - **Send to Ali** — council PCNs that are "Not started" or "New correspondence"
   can be emailed to Ali (Resend) with details + image attached. Driver name omitted.
+  On success the status auto-advances to "In progress (Ali)" and an inline "Paid Ali?"
+  (£30 / £40 / later) prompt records the fee; the money loop then drives the next to-dos.
 - **Payments** (council only) — three date-stamped toggles: Ali paid (£30 early /
   £40 delayed, DB-enforced), money requested from driver, driver paid
   (defaults to discounted cost).
 - **Money** tab — read-only view derived from the register: recovered from drivers,
-  saved by the system (£80 per resolved council ticket), total profit (council £80 −
+  saved by the system (£80 per resolved council ticket — including "Appeal won", which
+  waives the driver-money loop yet still counts £80 saved), total profit (council £80 −
   Ali's fee / private £60 per cleared ticket), and owed by drivers (ageing buckets +
   top debtors). All-time and this-month figures. Visible to both roles.
 - **Export / reset** (admin) — export register as xlsx; wipe-and-replace from an

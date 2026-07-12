@@ -7,8 +7,9 @@ import type { Role } from "@/lib/auth";
 import { createPcn, updatePcn, previewReset, resetFromXlsx, sendToAli, type UpdatePcnInput } from "@/app/actions";
 import { logout } from "@/app/login/actions";
 import { poundsToPence } from "@/lib/convert";
-import { statusesFor, isActionable, DEFAULT_STATUS, canSendToAli } from "@/lib/pcn/status";
-import { computeMoney } from "@/lib/pcn/money";
+import { statusesFor, DEFAULT_STATUS, canSendToAli } from "@/lib/pcn/status";
+import { computeMoney, daysSince } from "@/lib/pcn/money";
+import { queueEntryFor, QUEUE_GROUP_ORDER, type QueueEntry } from "@/lib/pcn/queue";
 
 /* ---------- helpers ---------- */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -66,6 +67,38 @@ function ToggleBtn({ on, label, onClick }: { on: boolean; label: string; onClick
 }
 function StampNote({ date }: { date: string | null }) {
   return <div className="font-spline font-medium text-[9.5px] text-sand mt-[5px]">{date ? fmtDate(date) : "date stamped on save"}</div>;
+}
+
+// One register row. Shared by the flat "All" list and the grouped "To do" queue;
+// `footer` spans the whole grid for a queue action chip or waiting annotation.
+function TicketRow({ p, highlight, onOpen, footer }: { p: PcnView; highlight: boolean; onOpen: () => void; footer?: React.ReactNode }) {
+  return (
+    <div
+      className={`grid grid-cols-2 ${GRID_COLS} gap-x-3 gap-y-1 md:gap-3 items-center p-3 cursor-pointer rounded-[10px] md:rounded-[7px] border border-line-soft md:border-x-0 md:border-t-0 mb-2.5 md:mb-0 md:hover:bg-field ${highlight ? "bg-[#fff6df]" : "bg-paper md:bg-transparent"}`}
+      onClick={onOpen}>
+      <span className="order-1 md:order-none font-spline font-semibold text-[12.5px]">{p.vehicleReg}</span>
+      <span className="order-3 md:order-none font-spline font-medium text-[11.5px] text-muted">{p.pcnNumber}</span>
+      <span className="order-5 md:order-none col-span-2 md:col-span-1 truncate font-medium text-[12.5px]">{p.authority} <span className="text-[#bcb3a0]">·</span> <span className="text-faint font-normal">{p.driverName || "— unassigned"}</span></span>
+      <span className="order-4 md:order-none justify-self-end md:justify-self-auto"><span className={`font-spline font-semibold text-[9px] tracking-[0.5px] px-2 py-[3px] rounded ${catCls(p.category)}`}>{p.category}</span></span>
+      <span className="order-6 md:order-none col-span-2 md:col-span-1 font-spline font-medium text-[11.5px] text-muted">{fmtDate(p.dateOfPcn)}</span>
+      <span className="order-2 md:order-none justify-self-end md:justify-self-start"><span className={`inline-block font-spline font-semibold text-[9px] tracking-[0.3px] leading-[1.35] px-2 py-[3px] rounded ${statusCls(p.status)}`}>{p.status || "— not set"}</span></span>
+      {footer && <div className="order-7 col-span-2 md:col-span-6 mt-[3px] md:mt-0">{footer}</div>}
+    </div>
+  );
+}
+
+const QUEUE_HEADING_CLS = "font-spline font-medium text-[9px] tracking-[1px] text-sand";
+
+// Action chip shown on a To-do card: what to do, plus age on dispatch/send cards.
+function QueueChip({ entry, ageDays }: { entry: QueueEntry; ageDays: number | null }) {
+  if (!entry.action) return null;
+  const showAge = (entry.action.key === "dispatch" || entry.action.key === "send_to_ali") && ageDays != null;
+  return (
+    <span className="inline-flex items-center gap-1.5 font-spline font-semibold text-[10px] tracking-[0.2px] text-accent">
+      <span className="text-[8px]">▸</span>{entry.action.label}
+      {showAge && <span className="font-medium text-sand">· {ageDays}d old</span>}
+    </span>
+  );
 }
 
 /* ---------- money tab (read-only, derived from the register) ---------- */
@@ -200,6 +233,7 @@ interface State {
   selectedId: string | null; newId: string | null; pcns: PcnView[];
   capStage: "idle" | "extracting" | "draft"; capFileName: string | null; capPreview: string | null; capImageUrl: string | null;
   capCat: Category; draft: Draft | null; dupeStatus: string | null; edit: Edit; saving: boolean;
+  saveState: "idle" | "saving" | "saved"; aliPrompt: boolean;
   sendStage: "idle" | "sending" | "sent";
   error: string | null;
   importStage: "idle" | "parsing" | "confirm" | "resetting";
@@ -215,11 +249,15 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
     view: "register", q: "", scope: isAdmin ? "all" : "todo", cat: "all", sort: "logged", sortDir: -1,
     selectedId: null, newId: null, pcns: initialPcns,
     capStage: "idle", capFileName: null, capPreview: null, capImageUrl: null, capCat: "council",
-    draft: null, dupeStatus: null, edit: emptyEdit(), saving: false, sendStage: "idle", error: null,
+    draft: null, dupeStatus: null, edit: emptyEdit(), saving: false, saveState: "idle", aliPrompt: false, sendStage: "idle", error: null,
     importStage: "idle", importPreview: null, importError: null,
   }));
   const update = useCallback((patch: Partial<State> | ((s: State) => Partial<State>)) =>
     setState((s) => ({ ...s, ...(typeof patch === "function" ? patch(s) : patch) })), []);
+
+  // Always-current snapshot so async save callbacks read the newest selection/edit.
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const byId = (id: string | null) => state.pcns.find((p) => p.id === id) || null;
 
@@ -227,7 +265,7 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
   const goRegister = () => update({ view: "register", error: null });
   const openDetail = (id: string) => {
     const p = state.pcns.find((x) => x.id === id)!;
-    update({ view: "detail", selectedId: id, error: null, sendStage: "idle", edit: {
+    update({ view: "detail", selectedId: id, error: null, sendStage: "idle", saveState: "idle", aliPrompt: false, edit: {
       status: p.status ?? "", driverName: p.driverName ?? "", notes: p.notes ?? "",
       aliFeePence: p.aliFeePence, moneyRequested: p.moneyRequestedAt != null, driverPaid: p.driverPaidAt != null,
     } });
@@ -298,23 +336,77 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
     } catch { update({ saving: false, error: "Couldn't save — try again." }); }
   };
 
-  /* detail edit */
-  const editField = (k: "status" | "driverName" | "notes") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    update((s) => ({ edit: { ...s.edit, [k]: e.target.value } }));
+  /* detail edit — instant save per field (no Save button) */
   const editSet = (patch: Partial<Edit>) => update((s) => ({ edit: { ...s.edit, ...patch } }));
-  const saveEdit = async () => {
-    const id = state.selectedId; if (!id || state.saving) return;
-    update({ saving: true, error: null });
-    const e = state.edit;
-    const patch: UpdatePcnInput = { status: e.status || null, notes: e.notes || null };
-    if (isAdmin) patch.driverName = e.driverName || null;
-    const p = byId(id);
-    if (p?.category === "council") { patch.aliFeePence = e.aliFeePence; patch.moneyRequested = e.moneyRequested; patch.driverPaid = e.driverPaid; }
-    try {
-      const view = await updatePcn(id, patch);
-      update((s) => ({ pcns: s.pcns.map((x) => (x.id === id ? view : x)), saving: false, error: null }));
-      router.refresh();
-    } catch { update({ saving: false, error: "Couldn't save — try again." }); }
+
+  // Value to restore into the edit form for a field when its save fails.
+  const revertValue = (field: keyof Edit, p: PcnView | null): Edit[keyof Edit] => {
+    switch (field) {
+      case "status": return p?.status ?? "";
+      case "notes": return p?.notes ?? "";
+      case "driverName": return p?.driverName ?? "";
+      case "aliFeePence": return p?.aliFeePence ?? null;
+      case "moneyRequested": return p?.moneyRequestedAt != null;
+      case "driverPaid": return p?.driverPaidAt != null;
+    }
+  };
+
+  // Per-field save coordination, keyed by ticket + field so a save started on one
+  // ticket can never land on another after navigation; one request in flight per
+  // key, newest value coalesced and re-sent when it lands (latest-write-wins).
+  const saveRef = useRef<{ inFlight: Set<string>; pending: Set<string> }>({ inFlight: new Set(), pending: new Set() });
+  const latestPatch = useRef<Record<string, UpdatePcnInput>>({});
+  const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const fireSave = useCallback((id: string, field: keyof Edit, patch: UpdatePcnInput) => {
+    const key = `${id}|${field}`;
+    latestPatch.current[key] = patch;
+    if (saveRef.current.inFlight.has(key)) { saveRef.current.pending.add(key); return; }
+    saveRef.current.inFlight.add(key);
+    update({ saveState: "saving", error: null });
+    const run = (p: UpdatePcnInput) => {
+      updatePcn(id, p)
+        .then((view) => update((s) => ({ pcns: s.pcns.map((x) => (x.id === id ? view : x)) })))
+        .catch(() =>
+          update((s) => {
+            // Only revert the form if this ticket is still the one on screen.
+            if (s.selectedId !== id) return { error: "Couldn't save — try again." };
+            const stored = s.pcns.find((x) => x.id === id) ?? null;
+            return { edit: { ...s.edit, [field]: revertValue(field, stored) }, error: "Couldn't save — try again." };
+          }))
+        .finally(() => {
+          if (saveRef.current.pending.has(key)) {
+            saveRef.current.pending.delete(key);
+            run(latestPatch.current[key]);
+            return;
+          }
+          saveRef.current.inFlight.delete(key);
+          update((s) => ({ saveState: saveRef.current.inFlight.size === 0 && !s.error ? "saved" : s.saveState }));
+        });
+    };
+    run(patch);
+  }, [update]);
+
+  // Debounced autosave for free-text fields (notes, driver name). The ticket id is
+  // captured at keystroke time so the delayed save follows the right record even
+  // if the user navigates away before the debounce fires.
+  const editText = (field: "notes" | "driverName") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const id = stateRef.current.selectedId;
+    if (!id) return;
+    const v = e.target.value;
+    update((s) => ({ edit: { ...s.edit, [field]: v } }));
+    const key = `${id}|${field}`;
+    clearTimeout(debounceTimers.current[key]);
+    debounceTimers.current[key] = setTimeout(() => {
+      fireSave(id, field, field === "notes" ? { notes: v || null } : { driverName: v || null });
+    }, 800);
+  };
+  // Instant save for a discrete control (status select, payment toggles).
+  const editNow = (patch: Partial<Edit>, field: keyof Edit, serverPatch: UpdatePcnInput) => {
+    const id = stateRef.current.selectedId;
+    if (!id) return;
+    editSet(patch);
+    fireSave(id, field, serverPatch);
   };
 
   const onSendToAli = async () => {
@@ -323,8 +415,18 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
     update({ sendStage: "sending", error: null });
     try {
       const res = await sendToAli(id);
-      if (res.ok) update({ sendStage: "sent" });
-      else update({ sendStage: "idle", error: res.error });
+      if (res.ok) {
+        const view = res.pcn;
+        // Server flipped status → "In progress (Ali)"; swap the fresh view in and
+        // reflect the new status in the edit form. Prompt for Ali's fee if unpaid.
+        update((s) => ({
+          sendStage: "sent",
+          pcns: s.pcns.map((x) => (x.id === id ? view : x)),
+          edit: { ...s.edit, status: view.status ?? "" },
+          aliPrompt: view.category === "council" && view.aliFeePence == null,
+        }));
+        router.refresh();
+      } else update({ sendStage: "idle", error: res.error });
     } catch { update({ sendStage: "idle", error: "Couldn't send — try again." }); }
   };
 
@@ -370,11 +472,13 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
   };
 
   /* view-models */
+  const now = new Date();
+  // Filtered + sorted rows (search + category). Bucketing into the To-do queue
+  // happens downstream so Waiting/Done share the same filter and sort order.
   const registerRows = () => {
-    const { q, scope, cat, sort, sortDir } = state;
+    const { q, cat, sort, sortDir } = state;
     const ql = q.trim().toLowerCase();
     const filtered = state.pcns.filter((p) => {
-      if (scope === "todo" && !isActionable(p.status)) return false;
       if (cat !== "all" && p.category !== cat) return false;
       if (!ql) return true;
       return (p.vehicleReg + " " + p.pcnNumber + " " + p.authority + " " + (p.driverName || "")).toLowerCase().includes(ql);
@@ -385,8 +489,18 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
 
   const mark = (k: State["sort"]) => (state.sort === k ? (state.sortDir < 0 ? "↓" : "↑") : "");
 
+  // Ball-in-Alan's-court count over the whole register (pre-search) for the tab.
+  const todoCount = state.pcns.filter((p) => queueEntryFor(p, now).bucket === "todo").length;
+
   const total = state.pcns.length;
   const rows = registerRows();
+  // To-do view: bucket the filtered rows and group the actionable ones by action.
+  const queued = rows.map((p) => ({ p, entry: queueEntryFor(p, now) }));
+  const todoGroups = QUEUE_GROUP_ORDER
+    .map((group) => ({ group, items: queued.filter((x) => x.entry.bucket === "todo" && x.entry.action?.group === group) }))
+    .filter((g) => g.items.length > 0);
+  const waitingRows = queued.filter((x) => x.entry.bucket === "waiting");
+  const doneRows = queued.filter((x) => x.entry.bucket === "done");
   const d = byId(state.selectedId);
   const dupeOf = (state.draft && state.pcns.find((p) => p.pcnNumber.toLowerCase() === state.draft!.pcnNumber.trim().toLowerCase())) || null;
   const dupe = !!dupeOf;
@@ -467,7 +581,7 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
 
             <div className="flex flex-wrap items-center gap-2 px-4 md:px-6 pb-[14px]">
               {(["todo", "all", "money"] as const).map((key) => {
-                const label = key === "todo" ? `To do · ${state.pcns.filter((p) => isActionable(p.status)).length}` : key === "all" ? `All tickets · ${state.pcns.length}` : "Money";
+                const label = key === "todo" ? `To do · ${todoCount}` : key === "all" ? `All tickets · ${state.pcns.length}` : "Money";
                 return (
                   <div key={key} className={`font-hanken font-semibold text-[11px] px-[13px] py-[7px] rounded-[7px] cursor-pointer border ${state.scope === key ? "bg-accent text-paper border-accent" : "bg-paper text-muted border-line"}`} onClick={() => setScope(key)}>{label}</div>
                 );
@@ -495,19 +609,51 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
                 <span>STATUS</span>
               </div>
 
-              {rows.map((p) => (
-                <div key={p.id}
-                  className={`grid grid-cols-2 ${GRID_COLS} gap-x-3 gap-y-1 md:gap-3 items-center p-3 cursor-pointer rounded-[10px] md:rounded-[7px] border border-line-soft md:border-x-0 md:border-t-0 mb-2.5 md:mb-0 md:hover:bg-field ${p.id === state.newId ? "bg-[#fff6df]" : "bg-paper md:bg-transparent"}`}
-                  onClick={() => openDetail(p.id)}>
-                  <span className="order-1 md:order-none font-spline font-semibold text-[12.5px]">{p.vehicleReg}</span>
-                  <span className="order-3 md:order-none font-spline font-medium text-[11.5px] text-muted">{p.pcnNumber}</span>
-                  <span className="order-5 md:order-none col-span-2 md:col-span-1 truncate font-medium text-[12.5px]">{p.authority} <span className="text-[#bcb3a0]">·</span> <span className="text-faint font-normal">{p.driverName || "— unassigned"}</span></span>
-                  <span className="order-4 md:order-none justify-self-end md:justify-self-auto"><span className={`font-spline font-semibold text-[9px] tracking-[0.5px] px-2 py-[3px] rounded ${catCls(p.category)}`}>{p.category}</span></span>
-                  <span className="order-6 md:order-none col-span-2 md:col-span-1 font-spline font-medium text-[11.5px] text-muted">{fmtDate(p.dateOfPcn)}</span>
-                  <span className="order-2 md:order-none justify-self-end md:justify-self-start"><span className={`inline-block font-spline font-semibold text-[9px] tracking-[0.3px] leading-[1.35] px-2 py-[3px] rounded ${statusCls(p.status)}`}>{p.status || "— not set"}</span></span>
-                </div>
-              ))}
-              {rows.length === 0 && <div className="text-center py-10 text-sand text-[13px]">No PCNs match — clear the search or add a PCN.</div>}
+              {state.scope === "todo" ? (
+                <>
+                  {todoGroups.map(({ group, items }) => (
+                    <div key={group} className="mt-[18px] first:mt-[10px]">
+                      <div className={`${QUEUE_HEADING_CLS} px-3 pb-[7px]`}>{group} · {items.length}</div>
+                      {items.map(({ p, entry }) => (
+                        <TicketRow key={p.id} p={p} highlight={p.id === state.newId} onOpen={() => openDetail(p.id)}
+                          footer={<QueueChip entry={entry} ageDays={daysSince(p.dateOfPcn, now)} />} />
+                      ))}
+                    </div>
+                  ))}
+                  {todoGroups.length === 0 && (
+                    <div className="text-center py-10 text-sand text-[13px]">{waitingRows.length || doneRows.length ? "Nothing to do — you're all caught up." : "No PCNs match — clear the search."}</div>
+                  )}
+
+                  {waitingRows.length > 0 && (
+                    <details className="mt-6 group">
+                      <summary className={`${QUEUE_HEADING_CLS} px-3 py-2 cursor-pointer select-none list-none marker:content-none [&::-webkit-details-marker]:hidden`}>
+                        <span className="inline-block transition-transform group-open:rotate-90">▸</span> WAITING · {waitingRows.length}
+                      </summary>
+                      {waitingRows.map(({ p, entry }) => (
+                        <TicketRow key={p.id} p={p} highlight={p.id === state.newId} onOpen={() => openDetail(p.id)}
+                          footer={entry.waitingOn && <span className="font-spline font-medium text-[10px] tracking-[0.2px] text-sand">{entry.waitingOn}</span>} />
+                      ))}
+                    </details>
+                  )}
+                  {doneRows.length > 0 && (
+                    <details className="mt-3 group">
+                      <summary className={`${QUEUE_HEADING_CLS} px-3 py-2 cursor-pointer select-none list-none marker:content-none [&::-webkit-details-marker]:hidden`}>
+                        <span className="inline-block transition-transform group-open:rotate-90">▸</span> DONE · {doneRows.length}
+                      </summary>
+                      {doneRows.map(({ p }) => (
+                        <TicketRow key={p.id} p={p} highlight={p.id === state.newId} onOpen={() => openDetail(p.id)} />
+                      ))}
+                    </details>
+                  )}
+                </>
+              ) : (
+                <>
+                  {rows.map((p) => (
+                    <TicketRow key={p.id} p={p} highlight={p.id === state.newId} onOpen={() => openDetail(p.id)} />
+                  ))}
+                  {rows.length === 0 && <div className="text-center py-10 text-sand text-[13px]">No PCNs match — clear the search or add a PCN.</div>}
+                </>
+              )}
             </div>
             )}
           </div>
@@ -543,11 +689,11 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
 
                 <div className="mt-[18px] pt-4 border-t border-line-soft grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-[13px]">
                   {isAdmin ? (
-                    <div><div className={LABEL_CLS}>DRIVER (name only)</div><input value={state.edit.driverName} onChange={editField("driverName")} placeholder="—" className={INPUT_HANKEN_CLS} /></div>
+                    <div><div className={LABEL_CLS}>DRIVER (name only)</div><input value={state.edit.driverName} onChange={editText("driverName")} placeholder="—" className={INPUT_HANKEN_CLS} /></div>
                   ) : (
                     <Field label="DRIVER (name only)" value={d.driverName || "—"} vcls="font-medium text-sm" />
                   )}
-                  <div><div className={LABEL_CLS}>STATUS</div><StatusSelect value={state.edit.status} category={d.category} onChange={(v) => update((s) => ({ edit: { ...s.edit, status: v } }))} /></div>
+                  <div><div className={LABEL_CLS}>STATUS</div><StatusSelect value={state.edit.status} category={d.category} onChange={(v) => editNow({ status: v }, "status", { status: v || null })} /></div>
                   {d.category === "council" && (
                     <>
                       <div>
@@ -555,7 +701,7 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
                         <div className="grid grid-cols-2 gap-1.5">
                           {([3000, 4000] as const).map((fee) => (
                             <ToggleBtn key={fee} on={state.edit.aliFeePence === fee} label={fee === 3000 ? "£30" : "£40"}
-                              onClick={() => editSet({ aliFeePence: state.edit.aliFeePence === fee ? null : fee })} />
+                              onClick={() => { const next = state.edit.aliFeePence === fee ? null : fee; editNow({ aliFeePence: next }, "aliFeePence", { aliFeePence: next }); }} />
                           ))}
                         </div>
                         {state.edit.aliFeePence != null && <StampNote date={d.aliPaidAt} />}
@@ -563,30 +709,45 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
                       <div>
                         <div className={LABEL_CLS}>MONEY REQUESTED FROM DRIVER</div>
                         <ToggleBtn on={state.edit.moneyRequested} label={state.edit.moneyRequested ? "✓ Requested" : "Mark requested"}
-                          onClick={() => editSet({ moneyRequested: !state.edit.moneyRequested })} />
+                          onClick={() => { const next = !state.edit.moneyRequested; editNow({ moneyRequested: next }, "moneyRequested", { moneyRequested: next }); }} />
                         {state.edit.moneyRequested && <StampNote date={d.moneyRequestedAt} />}
                       </div>
                       <div>
                         <div className={LABEL_CLS}>DRIVER PAID</div>
                         <ToggleBtn on={state.edit.driverPaid}
                           label={state.edit.driverPaid ? `✓ Paid ${gbp(d.driverPaidPence ?? d.discountedCostPence)}` : `Mark paid${d.discountedCostPence != null ? " " + gbp(d.discountedCostPence) : ""}`}
-                          onClick={() => editSet({ driverPaid: !state.edit.driverPaid })} />
+                          onClick={() => { const next = !state.edit.driverPaid; editNow({ driverPaid: next }, "driverPaid", { driverPaid: next }); }} />
                         {state.edit.driverPaid && <StampNote date={d.driverPaidAt} />}
                       </div>
                     </>
                   )}
-                  <div className="md:col-span-2"><div className={LABEL_CLS}>NOTES</div><textarea value={state.edit.notes} onChange={editField("notes")} rows={2} className={INPUT_HANKEN_CLS} /></div>
+                  <div className="md:col-span-2"><div className={LABEL_CLS}>NOTES</div><textarea value={state.edit.notes} onChange={editText("notes")} rows={2} className={INPUT_HANKEN_CLS} /></div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 mt-4">
-                  <div className={`font-spline font-bold text-xs tracking-[0.6px] px-4 py-[11px] rounded-lg cursor-pointer bg-accent text-paper shadow-[0_3px_0_rgba(120,40,30,0.35)]${state.saving ? " opacity-60" : ""}`} onClick={saveEdit}>{state.saving ? "SAVING…" : "SAVE CHANGES"}</div>
-                  {canSendToAli(d.category, d.status) && d.hasImage && (
-                    state.sendStage === "sent" ? (
-                      <div className="font-hanken font-semibold text-xs text-[#3f7d4e]">Sent to Ali ✓</div>
-                    ) : (
-                      <div className={`font-spline font-bold text-xs tracking-[0.6px] px-4 py-[10px] rounded-lg cursor-pointer bg-paper text-accent border-[1.5px] border-accent${state.sendStage === "sending" ? " opacity-60" : ""}`} onClick={onSendToAli}>{state.sendStage === "sending" ? "SENDING…" : "✉ SEND TO ALI"}</div>
-                    )
-                  )}
+                {/* Ball-in-Ali's-court fee prompt, surfaced right after a send. */}
+                {state.aliPrompt && d.category === "council" && (
+                  <div className="mt-4 pt-4 border-t border-line-soft">
+                    <div className={LABEL_CLS}>PAID ALI?</div>
+                    <div className="grid grid-cols-3 gap-1.5 max-w-[280px]">
+                      {([3000, 4000] as const).map((fee) => (
+                        <ToggleBtn key={fee} on={false} label={fee === 3000 ? "£30" : "£40"}
+                          onClick={() => { editNow({ aliFeePence: fee }, "aliFeePence", { aliFeePence: fee }); update({ aliPrompt: false }); }} />
+                      ))}
+                      <ToggleBtn on={false} label="later" onClick={() => update({ aliPrompt: false })} />
+                    </div>
+                    <StampNote date={d.aliPaidAt} />
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-3 mt-4 min-h-[24px]">
+                  {state.sendStage === "sent" ? (
+                    <div className="font-hanken font-semibold text-xs text-[#3f7d4e]">Sent to Ali ✓</div>
+                  ) : canSendToAli(d.category, d.status) && d.hasImage ? (
+                    <div className={`font-spline font-bold text-xs tracking-[0.6px] px-4 py-[10px] rounded-lg cursor-pointer bg-paper text-accent border-[1.5px] border-accent${state.sendStage === "sending" ? " opacity-60" : ""}`} onClick={onSendToAli}>{state.sendStage === "sending" ? "SENDING…" : "✉ SEND TO ALI"}</div>
+                  ) : null}
+                  <div className="font-spline font-medium text-[9.5px] tracking-[0.4px] text-sand ml-auto">
+                    {state.saveState === "saving" ? "Saving…" : state.saveState === "saved" ? "Saved ✓" : ""}
+                  </div>
                 </div>
                 {state.error && <div className="text-accent font-hanken font-medium text-[11px] mt-2">{state.error}</div>}
               </div>

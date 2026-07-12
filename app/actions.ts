@@ -78,6 +78,10 @@ export async function updatePcn(id: string, patch: UpdatePcnInput): Promise<PcnV
     if (s !== null && s !== existing.status && !statusesFor(existing.category).includes(s))
       throw new Error("Invalid status");
     set.status = s;
+    // Appeal-won date drives monthly money attribution: stamp on first win
+    // (keep an existing stamp), clear when the status moves away again.
+    if (s === "Appeal won") set.appealWonAt = existing.appealWonAt ?? today();
+    else if (existing.status === "Appeal won") set.appealWonAt = null;
   }
   if ("driverName" in patch && role === "admin") set.driverName = patch.driverName ?? null;
   if ("notes" in patch) set.notes = patch.notes ?? null;
@@ -112,11 +116,11 @@ export async function updatePcn(id: string, patch: UpdatePcnInput): Promise<PcnV
   return toView(row);
 }
 
-export type SendToAliResult = { ok: true } | { ok: false; error: string };
+export type SendToAliResult = { ok: true; pcn: PcnView } | { ok: false; error: string };
 
 export async function sendToAli(id: string): Promise<SendToAliResult> {
   try {
-    await requireRole();
+    const role = await requireRole();
     const [row] = await db.select().from(pcn).where(eq(pcn.id, id)).limit(1);
     if (!row) return { ok: false, error: "PCN not found." };
     if (!canSendToAli(row.category, row.status))
@@ -142,7 +146,20 @@ export async function sendToAli(id: string): Promise<SendToAliResult> {
       // sendPcnEmail throws user-friendly messages.
       return { ok: false, error: e instanceof Error ? e.message : "Send failed — try again." };
     }
-    return { ok: true };
+    // Email is out the door — the ticket is now in Ali's court. Best-effort flip;
+    // a failed update must not report the (already sent) email as failed.
+    try {
+      const [updated] = await db
+        .update(pcn)
+        .set({ status: "In progress (Ali)", updatedAt: new Date(), updatedBy: role })
+        .where(eq(pcn.id, id))
+        .returning();
+      revalidatePath("/");
+      return { ok: true, pcn: toView(updated ?? row) };
+    } catch (e) {
+      console.error("sendToAli status flip failed:", e);
+      return { ok: true, pcn: toView(row) };
+    }
   } catch (e) {
     console.error("sendToAli failed:", e);
     return { ok: false, error: "Send failed — try again." };

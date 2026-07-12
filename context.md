@@ -18,7 +18,7 @@ Each ticket needs its details logged, the original letter kept on file, its prog
 There are two logins with different powers:
 
 - **Admin (Abdullah)** — full control: adds new tickets, edits driver names, imports/exports the register, everything below.
-- **Alan** — a deliberately simplified, mostly tap-only view: he lands on a **"To do" queue** of tickets that still need action, can update statuses and notes, toggle the payment checkpoints, and email tickets to Ali — but cannot add tickets, see/edit driver-name edits, or import/reset the register. Restrictions are enforced on the server, not just hidden in the UI.
+- **Alan** — a deliberately simplified, mostly tap-only view: he lands on a **"To do" queue** of only the tickets where the ball is in his court, each card telling him *what* to do next, can update statuses and notes, toggle the payment checkpoints, and email tickets to Ali — but cannot add tickets, see/edit driver-name edits, or import/reset the register. Restrictions are enforced on the server, not just hidden in the UI.
 
 ## What you can do in it
 
@@ -28,11 +28,11 @@ Take a photo of the PCN letter (or upload one, or type it in manually). The lett
 ### Browse the register
 A searchable, sortable list of every ticket, filterable by category (all / council / private) and by scope:
 
-- **To do** — tickets whose status still needs action (Alan's default view).
+- **To do** — a "ball-in-Alan's-court" queue (Alan's default view). Only tickets that need an action *from him* appear, grouped under headings that name the action: **Send to Ali**, **Contact operator**, **Money**, **Decide next step**. Each card carries a one-line action label (e.g. "Send to Ali + pay / start appeal", "Request £80 from driver", "Chase <driver> for £80 — requested Nd ago"); send/dispatch cards also show how many days old the ticket is. Below the groups, two collapsed sections: **Waiting** (tickets parked with someone else — annotated "with Ali" / "appeal with council" / "with operator") and **Done** (resolved). The same queue is shown to both roles.
 - **All tickets** — the full register.
 - **Money** — a read-only financial view (see below).
 
-Each ticket opens into a detail view showing the stored record and the original letter image.
+Each ticket opens into a detail view showing the stored record and the original letter image. Cards themselves have no buttons — you act from the detail view.
 
 ### Track a ticket's lifecycle
 Each category has its own status list:
@@ -40,10 +40,10 @@ Each category has its own status list:
 - **Council:** Not started → In progress (Ali) / In progress (reassign) → New correspondence (send to Ali) → Appeal rejected / Appeal won → Complete.
 - **Private:** Not started → Message sent → Paid / Canceled.
 
-Closed statuses (Complete, Appeal won, Paid, Canceled) drop off the to-do queue; everything else stays on it. Legacy free-text statuses from old spreadsheet imports remain visible and selectable so they aren't silently lost.
+A ticket leaves the to-do queue whenever the next move isn't Alan's: parked-with-someone statuses (In progress (Ali) / (reassign), Message sent) fall into **Waiting**, and resolved ones (Complete, Appeal won, Paid, Canceled) into **Done**. **Appeal won** means the council reassigned the ticket to the driver — the whole driver-money loop is waived, and it still counts £80 in the Money tab's "Saved". Legacy free-text statuses from old spreadsheet imports remain visible and selectable so they aren't silently lost.
 
 ### Send a ticket to Ali
-For council tickets that are new or have fresh correspondence, one button emails Ali the ticket's details plus the letter image as an attachment. The driver's name is deliberately excluded from the email.
+For council tickets that are new or have fresh correspondence, one button emails Ali the ticket's details plus the letter image as an attachment. The driver's name is deliberately excluded from the email. On a successful send the ticket's status flips automatically to **In progress (Ali)** and an inline "Paid Ali?" prompt appears offering **£30 / £40 / later** — tapping a fee records the payment on the spot; "later" leaves a "pay Ali" to-do to surface in the Money group. From there the money loop drives the next to-dos: request £80 from the driver, then chase the driver until paid.
 
 ### Record the money (council tickets only)
 Three tap-to-toggle checkpoints per ticket, each stamped with the date it was first set:
@@ -51,6 +51,8 @@ Three tap-to-toggle checkpoints per ticket, each stamped with the date it was fi
 1. **Ali paid** — his £30 or £40 fee (only those two amounts are accepted; the date of first payment is preserved if the amount is later corrected).
 2. **Money requested** from the driver.
 3. **Driver paid** — defaults to the discounted ticket amount.
+
+Every edit in the detail view **saves instantly** — there is no Save button. Toggles, the status select and payment controls persist the moment they're tapped; notes and the driver-name field autosave a short moment after you stop typing. A small "Saving… / Saved ✓" indicator confirms it; a failed save reverts the field and shows an inline error.
 
 ### See the money
 A read-only **Money** view, derived entirely from the register (no separate bookkeeping), visible to both roles. Four figures, each with an all-time and a this-month total:

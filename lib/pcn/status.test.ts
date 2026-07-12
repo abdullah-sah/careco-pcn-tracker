@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSendToAli, isActionable, statusesFor, COUNCIL_STATUSES, PRIVATE_STATUSES } from "./status";
+import { canSendToAli, statusesFor, COUNCIL_STATUSES, PRIVATE_STATUSES } from "./status";
 
 describe("canSendToAli", () => {
   it("allows new council tickets", () => {
@@ -31,26 +31,5 @@ describe("statusesFor", () => {
   it("gives private tickets their own lifecycle", () => {
     expect(statusesFor("private")).toBe(PRIVATE_STATUSES);
     expect(PRIVATE_STATUSES).toEqual(["Not started", "Message sent", "Paid", "Canceled"]);
-  });
-});
-
-describe("isActionable", () => {
-  it("treats open statuses as actionable", () => {
-    expect(isActionable("Not started")).toBe(true);
-    expect(isActionable("In progress (Ali)")).toBe(true);
-    expect(isActionable("Appeal rejected")).toBe(true);
-    expect(isActionable("Message sent")).toBe(true);
-  });
-
-  it("treats closed statuses as done", () => {
-    expect(isActionable("Complete")).toBe(false);
-    expect(isActionable("Appeal won")).toBe(false);
-    expect(isActionable("Paid")).toBe(false);
-    expect(isActionable("Canceled")).toBe(false);
-  });
-
-  it("keeps legacy unset statuses out of the to-do queue", () => {
-    expect(isActionable(null)).toBe(false);
-    expect(isActionable("")).toBe(false);
   });
 });

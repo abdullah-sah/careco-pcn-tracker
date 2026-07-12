@@ -12,6 +12,7 @@ export type MoneyPcn = Pick<
   | "aliPaid" | "aliFeePence" | "aliPaidAt"
   | "moneyRequested" | "moneyRequestedAt"
   | "driverPaid" | "driverPaidPence" | "driverPaidAt"
+  | "appealWonAt"
 >;
 
 // Legacy spreadsheet rows hold free text ("Yes" / "No" / "N/A"); only "Yes" counts.
@@ -31,10 +32,11 @@ export const isMoneyRequested = (p: MoneyPcn): boolean =>
   yes(p.moneyRequested) || p.moneyRequestedAt != null;
 
 // Private tickets have no payment checkpoints — their lifecycle's "Paid" status is
-// the clearing event. Council clears only once the driver paid AND Ali's fee is known.
+// the clearing event. Council clears once the driver paid AND Ali's fee is known,
+// or when a reassignment appeal is won (the £80 liability vanishes outright).
 export function isCleared(p: MoneyPcn): boolean {
   return p.category === "council"
-    ? isDriverPaid(p) && aliFeePenceOf(p) != null
+    ? p.status === "Appeal won" || (isDriverPaid(p) && aliFeePenceOf(p) != null)
     : p.status === "Paid" || isDriverPaid(p);
 }
 
@@ -47,9 +49,11 @@ export function owedPence(p: MoneyPcn): number {
   return p.category === "council" ? COUNCIL_RECOVERY_PENCE : p.costPence ?? p.discountedCostPence ?? 0;
 }
 
-// A council ticket is "cleared" when its second checkpoint lands.
+// A council ticket is "cleared" when its second checkpoint lands — or, for a won
+// appeal, when the win was stamped (legacy wins carry no date → all-time only).
 function clearedAtOf(p: MoneyPcn): string | null {
   if (p.category !== "council") return p.driverPaidAt;
+  if (p.status === "Appeal won") return p.appealWonAt;
   const ds = [p.driverPaidAt, p.aliPaidAt].filter((d): d is string => d != null).sort();
   return ds.length ? ds[ds.length - 1] : null;
 }
