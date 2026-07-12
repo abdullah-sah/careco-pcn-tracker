@@ -8,6 +8,7 @@ import { createPcn, updatePcn, previewReset, resetFromXlsx, sendToAli, type Upda
 import { logout } from "@/app/login/actions";
 import { poundsToPence } from "@/lib/convert";
 import { statusesFor, isActionable, DEFAULT_STATUS, canSendToAli } from "@/lib/pcn/status";
+import { computeMoney } from "@/lib/pcn/money";
 
 /* ---------- helpers ---------- */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -67,6 +68,97 @@ function StampNote({ date }: { date: string | null }) {
   return <div className="font-spline font-medium text-[9.5px] text-sand mt-[5px]">{date ? fmtDate(date) : "date stamped on save"}</div>;
 }
 
+/* ---------- money tab (read-only, derived from the register) ---------- */
+const nOf = (c: number, word: string) => `${c} ${word}${c === 1 ? "" : "s"}`;
+const MONEY_CARD_CLS = "bg-paper border border-line rounded-[11px] p-4 md:px-[22px] md:py-5";
+const MONEY_NOTE_CLS = "text-[11px] text-faint leading-snug mt-3";
+
+function MonthRow({ pence, count, word }: { pence: number; count: number; word: string }) {
+  return (
+    <div className="mt-3 pt-3 border-t border-line-soft flex items-baseline justify-between gap-3">
+      <div className={`${LABEL_CLS} mb-0`}>THIS MONTH</div>
+      <div className="font-spline font-semibold text-[13px]">{gbp(pence)} <span className="font-medium text-faint">· {nOf(count, word)}</span></div>
+    </div>
+  );
+}
+
+function MoneyView({ pcns }: { pcns: PcnView[] }) {
+  const m = computeMoney(pcns, new Date());
+  const streams = [
+    { key: "COUNCIL", t: m.profit.council, formula: "£80 recovered − Ali's fee, per cleared ticket" },
+    { key: "PRIVATE", t: m.profit.private, formula: "£60 per cleared ticket" },
+  ] as const;
+  const ageRows = [
+    ["0–30 days", m.owed.ageing.d0to30],
+    ["31–60 days", m.owed.ageing.d31to60],
+    ["60+ days", m.owed.ageing.d60plus],
+  ] as const;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start px-4 pb-6 md:px-6">
+      <section className={MONEY_CARD_CLS}>
+        <div className="font-spectral font-semibold text-sm mb-3">Recovered from drivers</div>
+        <div className="font-spline font-bold text-[26px]">{gbp(m.recovered.allPence)}</div>
+        <div className="text-[11.5px] text-faint mt-[2px]">{nOf(m.recovered.allCount, "ticket")} paid back · all time</div>
+        <MonthRow pence={m.recovered.monthPence} count={m.recovered.monthCount} word="ticket" />
+      </section>
+
+      <section className={MONEY_CARD_CLS}>
+        <div className="font-spectral font-semibold text-sm mb-3">Saved by this system</div>
+        <div className="font-spline font-bold text-[26px]">{gbp(m.saved.allPence)}</div>
+        <div className="text-[11.5px] text-faint mt-[2px]">{nOf(m.saved.allCount, "council ticket")} resolved × £80 · all time</div>
+        <MonthRow pence={m.saved.monthPence} count={m.saved.monthCount} word="ticket" />
+        <div className={MONEY_NOTE_CLS}>Every ticket arrives in the owner's name, so without the register each one is an £80 cost to the business.</div>
+      </section>
+
+      <section className={MONEY_CARD_CLS}>
+        <div className="font-spectral font-semibold text-sm mb-3">Total profit</div>
+        <div className="grid grid-cols-2 gap-x-[22px] gap-y-1">
+          {streams.map(({ key, t, formula }) => (
+            <div key={key} className="min-w-0">
+              <div className={LABEL_CLS}>{key} · THIS MONTH</div>
+              <div className="font-spline font-bold text-[19px]">{gbp(t.monthPence)}</div>
+              <div className="text-[11px] text-faint mt-[2px]">{nOf(t.monthCount, "ticket")} cleared this month</div>
+              <div className="font-spline font-medium text-[11.5px] text-muted mt-2">{gbp(t.allPence)} all time · {nOf(t.allCount, "ticket")} cleared</div>
+              <div className="font-spline font-medium text-[9.5px] text-sand mt-[5px]">{formula}</div>
+            </div>
+          ))}
+        </div>
+        <div className={MONEY_NOTE_CLS}>The two streams are kept separate. Private payments carry no date, so the private monthly figure counts only dated payments.</div>
+      </section>
+
+      <section className={MONEY_CARD_CLS}>
+        <div className="font-spectral font-semibold text-sm mb-3">Owed by drivers</div>
+        <div className="font-spline font-bold text-[26px]">{gbp(m.owed.totalPence)}</div>
+        <div className="text-[11.5px] text-faint mt-[2px]">{nOf(m.owed.tickets, "ticket")} outstanding · {nOf(m.owed.drivers, "driver")} · money requested, driver not yet paid</div>
+        {m.owed.tickets === 0 ? (
+          <div className={MONEY_NOTE_CLS}>Nothing outstanding.</div>
+        ) : (
+          <>
+            <div className="mt-3 pt-3 border-t border-line-soft">
+              <div className={LABEL_CLS}>AGEING · DAYS SINCE REQUESTED</div>
+              {ageRows.map(([label, b]) => (
+                <div key={label} className="flex items-baseline justify-between gap-3 py-[3px]">
+                  <div className="font-spline font-medium text-[11.5px] text-muted">{label}</div>
+                  <div className="font-spline font-semibold text-[12.5px]">{gbp(b.pence)} <span className="font-medium text-faint">· {nOf(b.count, "ticket")}</span></div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 pt-3 border-t border-line-soft">
+              <div className={LABEL_CLS}>TOP DEBTORS</div>
+              {m.owed.top.map((d) => (
+                <div key={d.name} className="flex items-baseline justify-between gap-3 py-[3px]">
+                  <div className="min-w-0 truncate font-medium text-[12.5px]">{d.name}</div>
+                  <div className="shrink-0 font-spline font-semibold text-[12.5px]">{gbp(d.pence)} <span className="font-medium text-faint">· {nOf(d.tickets, "ticket")} · oldest {d.oldestDays == null ? "undated" : nOf(d.oldestDays, "day")}</span></div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
 /* Claude vision reads at most 2576px on the long edge — resizing client-side keeps
    uploads small on mobile data with no accuracy loss, and re-encoding to JPEG also
    converts iPhone HEIC photos into a format the OCR API accepts. */
@@ -104,7 +196,7 @@ function emptyEdit(): Edit {
 
 interface State {
   view: "register" | "detail" | "capture";
-  q: string; scope: "todo" | "all"; cat: "all" | Category; sort: "logged" | "reg" | "authority" | "date"; sortDir: number;
+  q: string; scope: "todo" | "all" | "money"; cat: "all" | Category; sort: "logged" | "reg" | "authority" | "date"; sortDir: number;
   selectedId: string | null; newId: string | null; pcns: PcnView[];
   capStage: "idle" | "extracting" | "draft"; capFileName: string | null; capPreview: string | null; capImageUrl: string | null;
   capCat: Category; draft: Draft | null; dupeStatus: string | null; edit: Edit; saving: boolean;
@@ -363,27 +455,36 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
                 <div className="text-[11.5px] text-faint mt-[2px]">{total}{total === 1 ? " PCN logged" : " PCNs logged"} · stored PCNs, replacing the spreadsheet</div>
               </div>
               <div className="flex items-center gap-2.5">
+                {state.scope !== "money" && (
                 <div className="flex flex-1 min-w-0 md:flex-none items-center gap-2 bg-paper border-[1.5px] border-line rounded-[9px] px-3">
                   <span className="font-spline font-semibold text-xs text-sand">⌕</span>
                   <input value={state.q} onChange={onSearch} placeholder="Search reg, PCN, authority, driver" className="border-none outline-none bg-transparent font-hanken font-medium text-[16px] md:text-xs text-ink w-full md:w-[220px] py-[9px] px-[2px]" />
                 </div>
+                )}
                 {isAdmin && <div className="flex shrink-0 items-center gap-2 font-spline font-bold text-[11px] tracking-[0.5px] text-paper bg-accent px-[15px] py-[9px] rounded-[9px] cursor-pointer -rotate-[1deg] shadow-[0_2px_0_rgba(120,40,30,0.35)] whitespace-nowrap" onClick={openCapture}>＋ ADD PCN</div>}
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 px-4 md:px-6 pb-[14px]">
-              {(["todo", "all"] as const).map((key) => {
-                const n = key === "todo" ? state.pcns.filter((p) => isActionable(p.status)).length : state.pcns.length;
+              {(["todo", "all", "money"] as const).map((key) => {
+                const label = key === "todo" ? `To do · ${state.pcns.filter((p) => isActionable(p.status)).length}` : key === "all" ? `All tickets · ${state.pcns.length}` : "Money";
                 return (
-                  <div key={key} className={`font-hanken font-semibold text-[11px] px-[13px] py-[7px] rounded-[7px] cursor-pointer border ${state.scope === key ? "bg-accent text-paper border-accent" : "bg-paper text-muted border-line"}`} onClick={() => setScope(key)}>{key === "todo" ? `To do · ${n}` : `All tickets · ${n}`}</div>
+                  <div key={key} className={`font-hanken font-semibold text-[11px] px-[13px] py-[7px] rounded-[7px] cursor-pointer border ${state.scope === key ? "bg-accent text-paper border-accent" : "bg-paper text-muted border-line"}`} onClick={() => setScope(key)}>{label}</div>
                 );
               })}
-              <div className="h-5 w-px bg-line mx-1" />
-              {(["all", "council", "private"] as const).map((key) => (
-                <div key={key} className={`font-hanken font-semibold text-[11px] px-[13px] py-[7px] rounded-[7px] cursor-pointer border ${state.cat === key ? "bg-ink text-paper border-ink" : "bg-paper text-muted border-line"}`} onClick={() => setCat(key)}>{key === "all" ? "All" : key === "council" ? "Council" : "Private"}</div>
-              ))}
+              {state.scope !== "money" && (
+                <>
+                  <div className="h-5 w-px bg-line mx-1" />
+                  {(["all", "council", "private"] as const).map((key) => (
+                    <div key={key} className={`font-hanken font-semibold text-[11px] px-[13px] py-[7px] rounded-[7px] cursor-pointer border ${state.cat === key ? "bg-ink text-paper border-ink" : "bg-paper text-muted border-line"}`} onClick={() => setCat(key)}>{key === "all" ? "All" : key === "council" ? "Council" : "Private"}</div>
+                  ))}
+                </>
+              )}
             </div>
 
+            {state.scope === "money" ? (
+              <MoneyView pcns={state.pcns} />
+            ) : (
             <div className="px-4 pb-6 md:px-6">
               <div className={`hidden md:grid ${GRID_COLS} gap-3 font-spline font-medium text-[9px] tracking-[1px] text-sand px-3 pb-[9px] border-b-[1.5px] border-ink`}>
                 <span className="cursor-pointer" onClick={() => toggleSort("reg")}>VEHICLE {mark("reg")}</span>
@@ -408,6 +509,7 @@ export default function PcnPortal({ initialPcns, role }: { initialPcns: PcnView[
               ))}
               {rows.length === 0 && <div className="text-center py-10 text-sand text-[13px]">No PCNs match — clear the search or add a PCN.</div>}
             </div>
+            )}
           </div>
         )}
 
